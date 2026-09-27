@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { isBlack, kidName, letterOf, octaveOf, pitchClass, rangeMidis } from "@/lib/piano/theory";
 import { playNote } from "@/lib/piano/synth";
 
@@ -77,6 +78,15 @@ function Key({
   onPlay: (midi: number) => void;
   left?: string;
 }) {
+  const last = useRef(0);
+  function press() {
+    if (!interactive) return;
+    const now = performance.now();
+    if (now - last.current < 350) return;
+    last.current = now;
+    playNote(midi);
+    onPlay(midi);
+  }
   const tone = flash
     ? "key-yes"
     : target
@@ -95,12 +105,12 @@ function Key({
       data-midi={midi}
       disabled={!interactive}
       style={left ? { left } : undefined}
-      onPointerDown={(event) => {
+      onTouchEnd={(event) => {
         if (!interactive) return;
-        playNote(midi);
         event.preventDefault();
-        onPlay(midi);
+        press();
       }}
+      onClick={press}
       className={
         "flex items-end justify-center rounded-b-md pb-1.5 font-extrabold " +
         (black ? "black-key " : "white-key ") +
