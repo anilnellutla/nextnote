@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+
+  --color-paper: #f3ecdf;
+  --color-ivory: #fbf7f0;
+  --color-ink: #1c1612;
+  --color-muted: #6e6258;
+  --color-line: #e0d3c2;
+  --color-walnut: #4a2c1c;
+  --color-felt: #1e4d3d;
+  --color-amber: #d4782f;
+
+  --shadow-card: 0 1px 0 rgb(28 22 18 / 0.05), 0 16px 40px rgb(74 44 28 / 0.1);
+  --radius-card: 1.25rem;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    margin: 0;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+.piano-keys {
+  --white: 2.85rem;
+  --black: 1.75rem;
+  position: relative;
+  display: flex;
+  width: max-content;
+  padding-bottom: 0.15rem;
+}
+
+.white-key {
+  width: var(--white);
+  height: 8.75rem;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--color-line);
+}
+
+.black-key {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  width: var(--black);
+  height: 5.25rem;
+  border-bottom-right-radius: 0.3rem;
+  border-bottom-left-radius: 0.3rem;
+  box-shadow: 0 2px 2px rgb(28 22 18 / 0.35);
+}
+
+.key-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1;
+}
+
+.key-name {
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.black-key .key-name {
+  font-size: 0.62rem;
+}
+
+.key-oct {
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.key-finger {
+  display: flex;
+  width: 1.15rem;
+  height: 1.15rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.15rem;
+  border-radius: 999px;
+  background: var(--color-felt);
+  color: var(--color-ivory);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.guide-keys {
+  --mini-white: 1.7rem;
+  --mini-black: 1.05rem;
+  position: relative;
+  display: flex;
+  width: max-content;
+}
+
+.mini-white {
+  width: var(--mini-white);
+  height: 4.5rem;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.2rem;
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-ivory);
+  color: var(--color-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.mini-white:first-child {
+  border-left: 1px solid var(--color-line);
+  border-bottom-left-radius: 0.35rem;
+}
+.mini-white:last-child {
+  border-bottom-right-radius: 0.35rem;
+}
+
+.mini-black {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: var(--mini-black);
+  height: 2.7rem;
+  padding-bottom: 0.15rem;
+  background: var(--color-ink);
+  color: var(--color-ivory);
+  font-size: 0.55rem;
+  font-weight: 800;
+  line-height: 1;
+  border-bottom-left-radius: 0.25rem;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.piano-scroll {
+  scrollbar-width: thin;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@keyframes key-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--color-amber);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--color-amber);
+  }
+}
+
+@layer utilities {
+  .key-target {
+    background-color: var(--color-amber);
+    color: var(--color-ink);
+    animation: key-glow 1s ease-in-out infinite;
+  }
+}
+
+@keyframes listen-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.listening-dot {
+  animation: listen-pulse 1.4s ease-in-out infinite;
+}
+
+@media (min-width: 48rem) {
+  .piano-keys {
+    --white: 3.35rem;
+    --black: 2rem;
+  }
+  .white-key {
+    height: 10.5rem;
+  }
+  .black-key {
+    height: 6.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listening-dot,
+  .key-target {
+    animation: none;
+  }
+}
