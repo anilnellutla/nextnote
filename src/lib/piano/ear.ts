@@ -45,109 +45,74 @@ export async function startEar(): Promise<void> {
   return starting;
 }
 
-type Phase = "idle" | "attack" | "confirm" | "held";
+type PhaseFrame = { rms: number; midi: number | null; confidence: number };
 
-/** Turns a stream of pitch frames into one event per key press, including repeats. */
+/** One event per key press. A clear note counts on the next matching frame, so it stays quick without guessing on the attack. */
 export function createHearer(emit: (midi: number) => void) {
-  let floor = 0.004;
-  let phase: Phase = "idle";
-  let attackLeft = 0;
-  let votes: number[] = [];
-  let heldMidi: number | null = null;
-  let peak = 0;
-  let sawDip = false;
+  let floor = 0.001;
   let quiet = 0;
-  let nextMidi: number | null = null;
-  let nextCount = 0;
-
-  function agreed(list: number[]): number | null {
-    if (list.length < 2) return null;
-    const last = list[list.length - 1];
-    return last === list[list.length - 2] ? last : null;
-  }
+  let held: number | null = null;
+  let pending: number | null = null;
+  let peak = 0;
+  let dipped = false;
 
   return {
-    push(frame: { rms: number; midi: number | null; confidence: number }) {
-      const gate = Math.max(0.0045, floor * 2.2);
-      const loud = frame.rms >= gate;
-      if (!loud) {
-        floor = floor * 0.95 + frame.rms * 0.05;
+    push(frame: PhaseFrame) {
+      const gate = Math.max(0.0024, floor * 1.7);
+      if (frame.rms < gate) {
+        floor = Math.min(0.02, floor * 0.9 + frame.rms * 0.1);
         quiet += 1;
-        if (quiet >= 3) {
-          phase = "idle";
-          votes = [];
-          heldMidi = null;
+        pending = null;
+        if (quiet >= 2) {
+          held = null;
+          dipped = false;
           peak = 0;
-          sawDip = false;
-          nextMidi = null;
-          nextCount = 0;
         }
         return;
       }
       quiet = 0;
-      const midi = frame.midi != null && frame.confidence >= 0.72 ? frame.midi : null;
-
-      if (phase === "idle") {
-        phase = "attack";
-        attackLeft = 1;
-        votes = [];
-        peak = frame.rms;
-        sawDip = false;
-        nextMidi = null;
-        nextCount = 0;
-        return;
-      }
-
+      if (peak > 0 && frame.rms < peak * 0.48) dipped = true;
       if (frame.rms > peak) peak = frame.rms;
 
-      if (phase === "attack") {
-        attackLeft -= 1;
-        if (attackLeft > 0) return;
-        phase = "confirm";
-      }
-
-      if (phase === "confirm") {
-        if (midi != null) votes.push(midi);
-        if (votes.length > 7) votes.shift();
-        const chosen = agreed(votes);
-        if (chosen == null) return;
-        heldMidi = chosen;
-        phase = "held";
-        peak = frame.rms;
-        sawDip = false;
-        emit(chosen);
+      const midi = frame.midi;
+      const usable = midi != null && midi >= 36 && midi <= 84 && frame.confidence >= 0.55;
+      if (!usable || midi == null) {
+        if (frame.confidence < 0.55) floor = Math.min(frame.rms, floor * 0.97 + frame.rms * 0.03);
+        pending = null;
         return;
       }
 
-      if (frame.rms < peak * 0.5) sawDip = true;
-      if (midi == null) {
-        nextMidi = null;
-        nextCount = 0;
-        return;
-      }
-      if (midi === heldMidi) {
-        nextMidi = null;
-        nextCount = 0;
-        if (sawDip && frame.rms > peak * 0.58) {
-          sawDip = false;
-          peak = frame.rms;
+      if (held == null) {
+        if (pending === midi) {
           emit(midi);
+          held = midi;
+          pending = null;
+          dipped = false;
+          peak = frame.rms;
+        } else {
+          pending = midi;
         }
         return;
       }
-      if (midi === nextMidi) nextCount += 1;
-      else {
-        nextMidi = midi;
-        nextCount = 1;
+
+      if (midi === held) {
+        pending = null;
+        if (dipped && frame.rms > peak * 0.62) {
+          emit(midi);
+          dipped = false;
+          peak = frame.rms;
+        }
+        return;
       }
-      if (nextCount >= 2) {
-        heldMidi = midi;
-        nextCount = 0;
-        nextMidi = null;
-        sawDip = false;
-        peak = frame.rms;
-        votes = [midi, midi, midi];
+
+      if (pending === midi) {
         emit(midi);
+        held = midi;
+        pending = null;
+        dipped = false;
+        peak = frame.rms;
+      } else {
+        pending = midi;
       }
     },
   };
@@ -176,7 +141,7 @@ async function openEar(): Promise<void> {
   audio = new AC();
   await audio.resume();
   const analyser = audio.createAnalyser();
-  analyser.fftSize = 4096;
+  analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0;
   audio.createMediaStreamSource(stream).connect(analyser);
   const buffer = new Float32Array(analyser.fftSize);
@@ -197,5 +162,5 @@ async function openEar(): Promise<void> {
       midi: hit.pitch?.midi ?? null,
       confidence: hit.pitch?.confidence ?? 0,
     });
-  }, 50);
+  }, 20);
 }

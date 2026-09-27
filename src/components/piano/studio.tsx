@@ -557,7 +557,7 @@ function LessonRoom({
   useEffect(() => {
     const offNote = onNote((midi) => {
       if (modeRef.current !== "acoustic") return;
-      if (performance.now() < ignoreUntil.current) return;
+      if (performance.now() < ignoreUntil.current && midi > 76) return;
       setHeard(midi);
       grade(midi);
     });
@@ -641,7 +641,7 @@ function LessonRoom({
       const message = coachAccept(midi, current.accept);
       if (message == null) {
         playYes();
-        ignoreUntil.current = performance.now() + 420;
+        ignoreUntil.current = performance.now() + 200;
         setWrong(null);
         setFlash(midi);
         window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);

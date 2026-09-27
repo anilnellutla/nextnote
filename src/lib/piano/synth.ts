@@ -58,12 +58,12 @@ export function playYes(): void {
   osc.frequency.setValueAtTime(880, t);
   osc.frequency.exponentialRampToValueAtTime(1318, t + 0.12);
   gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(0.1, t + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  gain.gain.exponentialRampToValueAtTime(0.045, t + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
   osc.connect(gain);
   gain.connect(audio.destination);
   osc.start(t);
-  osc.stop(t + 0.24);
+  osc.stop(t + 0.14);
 }
 export async function playSequence(
   notes: number[],
