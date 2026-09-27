@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ChevronRight,
   Laptop,
-  Lock,
   Mic,
   Pause,
   Play,
@@ -17,7 +16,6 @@ import {
   UNITS,
   clefFor,
   demoOf,
-  firstOpenStep,
   focusOf,
   gradedSteps,
   highlightOf,
@@ -25,7 +23,6 @@ import {
   phraseWindow,
   targetOf,
   unitCleared,
-  unitUnlocked,
   type Step,
 } from "@/lib/piano/curriculum";
 import { earIsOn, onNote, startEar, stopEar } from "@/lib/piano/ear";
@@ -288,6 +285,11 @@ function MicCheck({
   );
 }
 
+function stepLabel(step: Step): string {
+  const text = (step.sayScreen ?? step.say).split(". ")[0];
+  return text.length > 84 ? `${text.slice(0, 81)}…` : text;
+}
+
 function Path({
   onOpen,
   onChoose,
@@ -302,7 +304,6 @@ function Path({
   const mode = useStudio((s) => s.mode);
   const completed = useStudio((s) => s.completed);
   const stars = useStudio((s) => s.stars);
-  const unlockAll = useStudio((s) => s.unlockAll);
   const lastStepId = useStudio((s) => s.lastStepId);
   const clearSteps = useStudio((s) => s.clearSteps);
   const resetProgress = useStudio((s) => s.resetProgress);
@@ -342,21 +343,15 @@ function Path({
       ) : null}
       <ol className="mt-5 flex flex-col gap-3">
         {UNITS.map((unit, index) => {
-          const open = unitUnlocked(index, completed, unlockAll);
           const done = unitCleared(unit, completed);
           const graded = gradedSteps(unit);
           const earned = graded.reduce((sum, step) => sum + (stars[step.id] ?? 0), 0);
           const doneCount = unit.steps.filter((step) => completed.includes(step.id)).length;
           return (
-            <li key={unit.id} className="flex items-stretch gap-2">
-              <button
-                type="button"
-                disabled={!open}
-                onClick={() => onOpen(firstOpenStep(unit, completed).id)}
-                className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-card border border-line bg-ivory px-4 py-3 text-left shadow-card disabled:opacity-60"
-              >
+            <li key={unit.id} className="rounded-card border border-line bg-ivory shadow-card">
+              <div className="flex items-start gap-3 px-4 py-3">
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-paper font-display text-lg text-walnut">
-                  {open ? index + 1 : <Lock className="size-4" aria-hidden="true" />}
+                  {index + 1}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-display text-lg leading-tight text-ink">{unit.title}</span>
@@ -366,16 +361,28 @@ function Path({
                     {graded.length > 0 ? ` · ${earned}/${graded.length * 3} stars` : ""}
                   </span>
                 </span>
-              </button>
-              {open || doneCount > 0 ? (
                 <button
                   type="button"
                   onClick={() => setConfirm(unit.id)}
-                  className="shrink-0 rounded-card border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
+                  className="min-h-11 shrink-0 rounded-xl px-2 text-sm font-extrabold text-walnut"
                 >
                   Reset
                 </button>
-              ) : null}
+              </div>
+              <div className="border-t border-line">
+                {unit.steps.map((step, stepIndex) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => onOpen(step.id)}
+                    className="flex min-h-11 w-full items-center gap-3 border-t border-line px-4 text-left first:border-t-0"
+                  >
+                    <span className="w-5 shrink-0 text-sm font-extrabold text-muted">{stepIndex + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">{stepLabel(step)}</span>
+                    {completed.includes(step.id) ? <span className="shrink-0 text-xs font-extrabold text-felt">Done</span> : null}
+                  </button>
+                ))}
+              </div>
             </li>
           );
         })}
@@ -943,8 +950,6 @@ function Stars({ n }: { n: number }) {
 }
 
 function Parents({ onClose, onReset }: { onClose: () => void; onReset: () => void }) {
-  const unlockAll = useStudio((s) => s.unlockAll);
-  const setUnlockAll = useStudio((s) => s.setUnlockAll);
   return (
     <div className="fixed inset-0 z-20 flex items-end justify-center bg-ink/40 p-4 md:items-center" role="dialog" aria-modal="true" aria-labelledby="parents-title">
       <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-card bg-ivory p-5 shadow-card">
@@ -962,15 +967,6 @@ function Parents({ onClose, onReset }: { onClose: () => void; onReset: () => voi
             If the room is loud or a note isn’t picked up, move the device closer and play a bit firmer. The on-screen keys are the same lessons without a microphone.
           </p>
         </div>
-        <label className="mt-4 flex min-h-11 items-center gap-3 text-sm font-bold">
-          <input
-            type="checkbox"
-            checked={unlockAll}
-            onChange={(event) => setUnlockAll(event.target.checked)}
-            className="size-5 accent-felt"
-          />
-          Unlock every lesson
-        </label>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={onClose} className="min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
             Close
