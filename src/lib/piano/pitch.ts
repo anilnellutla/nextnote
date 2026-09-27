@@ -79,7 +79,7 @@ export function analyze(samples: Float32Array, sampleRate: number): Analysis {
   const midiFloat = 69 + 12 * Math.log2(heard / 440);
   const midi = Math.round(midiFloat);
   const nearest = 440 * 2 ** ((midi - 69) / 12);
-  const cents = Math.abs(1200 * Math.log2(frequency / nearest));
+  const cents = Math.abs(1200 * Math.log2(heard / nearest));
   if (cents > 50) return { rms, pitch: null };
 
   return {
@@ -92,16 +92,14 @@ export function analyze(samples: Float32Array, sampleRate: number): Analysis {
   };
 }
 
-/** If the pitch locked onto a harmonic, and the octave below is actually there, use that. */
+/** Drop one octave only when the lower tone is clearly stronger than the harmonic we locked onto. */
 function fundamental(samples: Float32Array, sampleRate: number, frequency: number): number {
-  let f = frequency;
-  for (let octave = 0; octave < 2; octave++) {
-    if (f < 130) break;
-    const lower = f / 2;
-    if (magnitude(samples, sampleRate, lower) > magnitude(samples, sampleRate, f) * 0.85) f = lower;
-    else break;
-  }
-  return f;
+  if (frequency < 130) return frequency;
+  const lower = frequency / 2;
+  const low = magnitude(samples, sampleRate, lower);
+  const here = magnitude(samples, sampleRate, frequency);
+  if (low > here * 1.8) return lower;
+  return frequency;
 }
 
 function magnitude(samples: Float32Array, sampleRate: number, frequency: number): number {

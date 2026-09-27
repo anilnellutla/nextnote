@@ -82,9 +82,12 @@ export function createHearer(emit: (midi: number) => void) {
       const ok = midi != null && midi >= 36 && midi <= 84 && frame.confidence >= 0.48;
       if (!ok || midi == null) {
         miss += 1;
-        if (miss >= 5) {
+        if (miss >= 4) {
+          held = null;
           pending = null;
           pendingHits = 0;
+          dipped = false;
+          peak = 0;
         }
         return;
       }
@@ -117,19 +120,18 @@ export function createHearer(emit: (midi: number) => void) {
         return;
       }
 
-      if (strong || (pending === midi && pendingHits >= 1)) {
+      if (pending === midi) pendingHits += 1;
+      else {
+        pending = midi;
+        pendingHits = 1;
+      }
+      if (pendingHits >= 3) {
         emit(midi);
         held = midi;
         pending = null;
         pendingHits = 0;
         dipped = false;
         peak = frame.rms;
-        return;
-      }
-      if (pending === midi) pendingHits += 1;
-      else {
-        pending = midi;
-        pendingHits = 1;
       }
     },
   };
