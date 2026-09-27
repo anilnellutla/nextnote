@@ -47,6 +47,8 @@ type Store = Saved & {
   setUnlockAll: (unlockAll: boolean) => void;
   rememberStep: (id: string) => void;
   mark: (id: string, stars: number) => void;
+  clearSteps: (ids: string[]) => void;
+  resetProgress: () => void;
   reset: () => void;
 };
 
@@ -85,6 +87,26 @@ export const useStudio = create<Store>((set, get) => ({
     const prev = get().stars[id] ?? 0;
     const starsNext = stars > 0 ? { ...get().stars, [id]: Math.max(prev, stars) } : get().stars;
     set({ completed, stars: starsNext });
+    localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
+  },
+  clearSteps: (ids) => {
+    const drop = new Set(ids);
+    const stars = { ...get().stars };
+    for (const id of ids) delete stars[id];
+    const last = get().lastStepId;
+    set({
+      completed: get().completed.filter((id) => !drop.has(id)),
+      stars,
+      lastStepId: last && drop.has(last) ? null : last,
+    });
+    localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
+  },
+  resetProgress: () => {
+    set({
+      completed: [],
+      stars: {},
+      lastStepId: null,
+    });
     localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
   },
   reset: () => {

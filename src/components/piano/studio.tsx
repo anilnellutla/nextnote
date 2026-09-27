@@ -304,7 +304,10 @@ function Path({
   const stars = useStudio((s) => s.stars);
   const unlockAll = useStudio((s) => s.unlockAll);
   const lastStepId = useStudio((s) => s.lastStepId);
+  const clearSteps = useStudio((s) => s.clearSteps);
+  const resetProgress = useStudio((s) => s.resetProgress);
   const resume = lastStepId ? locate(lastStepId) : null;
+  const [confirm, setConfirm] = useState<null | "all" | string>(null);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-5 py-6 md:px-8 md:py-10">
@@ -338,12 +341,12 @@ function Path({
           const earned = graded.reduce((sum, step) => sum + (stars[step.id] ?? 0), 0);
           const doneCount = unit.steps.filter((step) => completed.includes(step.id)).length;
           return (
-            <li key={unit.id}>
+            <li key={unit.id} className="flex items-stretch gap-2">
               <button
                 type="button"
                 disabled={!open}
                 onClick={() => onOpen(firstOpenStep(unit, completed).id)}
-                className="flex w-full min-h-11 items-center gap-3 rounded-card border border-line bg-ivory px-4 py-3 text-left shadow-card disabled:opacity-60"
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-card border border-line bg-ivory px-4 py-3 text-left shadow-card disabled:opacity-60"
               >
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-paper font-display text-lg text-walnut">
                   {open ? index + 1 : <Lock className="size-4" aria-hidden="true" />}
@@ -357,6 +360,15 @@ function Path({
                   </span>
                 </span>
               </button>
+              {doneCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirm(unit.id)}
+                  className="shrink-0 rounded-card border border-line bg-ivory px-3 text-sm font-bold text-walnut"
+                >
+                  Reset
+                </button>
+              ) : null}
             </li>
           );
         })}
@@ -373,7 +385,41 @@ function Path({
         <button type="button" onClick={onParents} className="min-h-11 rounded-xl px-3 text-sm font-bold text-muted">
           For parents
         </button>
+        <button type="button" onClick={() => setConfirm("all")} className="min-h-11 rounded-xl px-3 text-sm font-bold text-walnut">
+          Reset progress
+        </button>
       </div>
+      {confirm ? (
+        <div className="fixed inset-0 z-20 flex items-end justify-center bg-ink/40 p-4 md:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-card bg-ivory p-5 shadow-card">
+            <h2 className="font-display text-2xl text-ink">{confirm === "all" ? "Reset all progress?" : "Reset this lesson?"}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink">
+              {confirm === "all"
+                ? "Stars and finished lessons will be cleared. Piano or screen stays as it is."
+                : "Stars for this lesson will be cleared so it can be played from the start."}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm === "all") resetProgress();
+                  else {
+                    const unit = UNITS.find((item) => item.id === confirm);
+                    if (unit) clearSteps(unit.steps.map((step) => step.id));
+                  }
+                  setConfirm(null);
+                }}
+                className="min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory"
+              >
+                Reset
+              </button>
+              <button type="button" onClick={() => setConfirm(null)} className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-walnut">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -671,6 +717,15 @@ function LessonRoom({
         <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
           {place.next ? "Continue" : "Finish"}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            useStudio.getState().clearSteps([step.id]);
+          }}
+          className="mt-2 min-h-11 text-sm font-bold text-walnut"
+        >
+          Reset this lesson
+        </button>
       </div>
     );
   }
@@ -775,19 +830,18 @@ function LessonRoom({
                   Hear it
                 </button>
               ) : null}
-              {step.kind === "phrase" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    restart();
-                    setPaused(false);
-                  }}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl font-bold text-walnut"
-                >
-                  <RotateCcw className="size-4" aria-hidden="true" />
-                  Start this line again
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  useStudio.getState().clearSteps([step.id]);
+                  restart();
+                  setPaused(false);
+                }}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl font-bold text-walnut"
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Reset this lesson
+              </button>
               <button type="button" onClick={onExit} className="min-h-11 font-bold text-muted">
                 Back to lessons
               </button>
