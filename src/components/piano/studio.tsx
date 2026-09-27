@@ -503,7 +503,6 @@ function LessonRoom({
   const [resetAsk, setResetAsk] = useState(false);
   const [hintOn, setHintOn] = useState(false);
   const [wrong, setWrong] = useState<number | null>(null);
-  const [pop, setPop] = useState<string | null>(null);
   const discovered = useRef(new Set<number>());
 
   const indexRef = useRef(0);
@@ -600,9 +599,7 @@ function LessonRoom({
   }, [stepId, index]);
 
   function award(amount: number) {
-    const rankUp = useStudio.getState().addPoints(amount);
-    setPop(rankUp ? rankUp : `+${amount}`);
-    window.setTimeout(() => setPop((current) => (current === (rankUp ? rankUp : `+${amount}`) ? null : current)), 1000);
+    useStudio.getState().addPoints(amount);
   }
 
   function goNext() {
@@ -760,7 +757,7 @@ function LessonRoom({
 
   const phraseIndex = done && step.kind === "phrase" ? step.notes.length - 1 : index;
   const highlights = highlightOf(step, phraseIndex);
-  const say = mode === "screen" && step.sayScreen ? step.sayScreen : step.say;
+  const stepNumber = place.unit.steps.findIndex((item) => item.id === step.id) + 1;
   const target = targetOf(step, done && step.kind === "phrase" ? step.notes.length - 1 : index);
   const clef = clefFor(step, step.kind === "explore" ? heard : target);
   let staffNotes: number[] = [];
@@ -777,9 +774,6 @@ function LessonRoom({
     staffNotes = [heard];
   }
   const lyric = step.kind === "phrase" ? step.lyrics?.[done ? step.lyrics.length - 1 : index] : null;
-  const fingerNow = target != null ? step.fingers?.[target] : undefined;
-  const stepNumber = place.unit.steps.findIndex((item) => item.id === step.id) + 1;
-  const replyClass = tone === "good" ? "text-yes" : tone === "fix" ? "text-walnut" : "text-ink";
   const showHint = hintOn && !done && step.kind !== "talk" && step.kind !== "explore";
   const ribbonNotes = step.kind === "phrase" ? step.notes : step.kind === "find" ? [step.accept[0]] : [];
 
@@ -802,12 +796,11 @@ function LessonRoom({
         <p className="mt-6 text-sm font-extrabold text-felt">
           {place.unit.title} · {stepNumber} of {place.unit.steps.length}
         </p>
-        <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{say}</h1>
+        <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{stepLabel(step)}</h1>
         {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
         <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
           {place.next ? "Continue" : "Finish"}
         </button>
-        {pop ? <p className="point-pop mt-3 font-display text-3xl font-semibold text-felt">{pop}</p> : null}
         {resetAsk ? (
           <ResetSheet
             onLesson={() => {
@@ -838,15 +831,19 @@ function LessonRoom({
           <Pause className="size-5" aria-hidden="true" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 truncate font-display text-lg leading-tight text-ink">
-            {mode === "acoustic" && listening ? <span className="listening-dot size-2 shrink-0 rounded-full bg-felt" /> : null}
-            <span className="truncate">{place.unit.title}</span>
-          </p>
-          <p className="text-xs font-bold text-muted">
-            Waits for you · {stepNumber} of {place.unit.steps.length}
-            {step.kind === "phrase" ? ` · note ${index + 1} of ${step.notes.length}` : ""}
-          </p>
+          <p className="truncate font-display text-lg leading-tight text-ink">{place.unit.title}</p>
         </div>
+        {mode === "acoustic" ? (
+          <span
+            className={
+              "flex size-11 shrink-0 items-center justify-center rounded-full " +
+              (listening ? (hearing ? "bg-felt text-ivory" : "listening-dot bg-ivory text-felt") : "bg-ivory text-muted")
+            }
+            aria-label={listening ? (hearing ? "Hearing the piano" : "Listening") : "Microphone is off"}
+          >
+            <Mic className="size-5" aria-hidden="true" />
+          </span>
+        ) : null}
         <ScoreChip />
         <button
           type="button"
@@ -858,7 +855,6 @@ function LessonRoom({
       </header>
 
       <section className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-2">
-        <p className="max-w-xl text-center text-base font-bold leading-snug text-ink">{say}</p>
         {clef && staffNotes.length > 0 ? <Staff notes={staffNotes} index={staffIndex} clef={clef} /> : null}
         {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
         {ribbonNotes.length > 0 ? (
@@ -867,13 +863,6 @@ function LessonRoom({
           <p className="font-display text-5xl font-semibold text-walnut">{heard != null ? kidName(heard) : "Play one key"}</p>
         )}
         {lyric ? <p className="font-display text-3xl font-semibold text-walnut">{lyric}</p> : null}
-        {fingerNow && showHint ? <p className="text-sm font-extrabold text-felt">Finger {fingerNow}</p> : null}
-        {reply ? (
-          <p className={`text-center text-base font-bold ${replyClass}`} aria-live="polite">
-            {reply}
-          </p>
-        ) : null}
-        {pop ? <p className="point-pop font-display text-3xl font-semibold text-felt">{pop}</p> : null}
         {done && earned > 0 ? <Stars n={earned} /> : null}
         <div className="flex flex-wrap justify-center gap-2">
           {!showHint && !done && step.kind !== "explore" ? (
@@ -890,24 +879,17 @@ function LessonRoom({
       </section>
 
       <div className="min-w-0 px-3 pb-4">
-        {mode === "acoustic" && listening ? (
-          <p className="mb-2 text-center text-sm font-extrabold text-ink" aria-live="polite">
-            {hearing
-              ? heard != null
-                ? `Hearing ${kidName(heard)}. Let the key up before the next note.`
-                : "I hear sound. Play one note and let it go."
-              : "Listening. Play one note, a little closer if I stay quiet."}
-          </p>
-        ) : null}
         {mode === "acoustic" && !listening ? (
-          <div className="mb-3 rounded-xl bg-ivory p-3 shadow-card">
-            <p className="text-sm text-ink">Tap Listen, then play the note on your piano. The song will wait.</p>
-            {earError ? <p className="mt-1 text-sm font-bold text-walnut">{earError}</p> : null}
-            <button type="button" onClick={() => void listen()} className="mt-2 min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
-              Listen
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void listen()}
+            className="mb-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-felt font-extrabold text-ivory"
+          >
+            <Mic className="size-4" aria-hidden="true" />
+            Listen
+          </button>
         ) : null}
+        {earError ? <p className="mb-2 text-center text-sm font-bold text-walnut">{earError}</p> : null}
         <Keyboard
           fingers={showHint ? step.fingers : undefined}
           position={step.position}
@@ -917,11 +899,6 @@ function LessonRoom({
           interactive={mode === "screen" && !paused}
           onPlay={grade}
         />
-        <p className="mt-2 text-center text-sm text-muted">
-          {mode === "acoustic"
-            ? "Grey is what I heard. Yellow is the note to play. Blue means it was right."
-            : "Tap the key. Yellow is the hint. Blue means it was right."}
-        </p>
       </div>
 
       {resetAsk ? (
