@@ -50,6 +50,16 @@ const maryBWords = ["Lit-", "tle", "lamb,", "lit-", "tle", "lamb"];
 const maryC = [64, 62, 62, 64, 62, 60];
 const maryCWords = ["Whose", "fleece", "was", "white", "as", "snow"];
 
+const yankeeA = [60, 60, 62, 64, 60, 64, 62];
+const yankeeAWords = ["Yan-", "kee", "Doo-", "dle", "went", "to", "town"];
+const yankeeB = [60, 60, 62, 64, 60, 59, 60];
+const yankeeBWords = ["A-", "rid-", "ing", "on", "a", "po-", "ny"];
+const yankeeC = [60, 60, 62, 64, 65, 64, 62];
+const yankeeCWords = ["Stuck", "a", "fea-", "ther", "in", "his", "cap"];
+const yankeeD = [60, 60, 62, 64, 60, 59, 60];
+const yankeeDWords = ["And", "called", "it", "ma-", "ca-", "ro-", "ni"];
+const RH_B: Record<number, string> = { ...RH, 59: "1" };
+
 export const UNITS: Unit[] = [
   {
     id: "map",
@@ -377,6 +387,82 @@ export const UNITS: Unit[] = [
     ],
   },
   {
+    id: "yankee",
+    title: "Yankee Doodle",
+    blurb: "The song you already sing. Same hand, one extra note.",
+    steps: [
+      {
+        id: "yankee-intro",
+        kind: "talk",
+        position: RH_POS,
+        fingers: RH_B,
+        say: "Yankee Doodle uses the same right-hand shape. One note, B, sits just below middle C — the thumb steps down to it.",
+        hint: "",
+        success: "",
+      },
+      {
+        id: "yankee-1",
+        kind: "phrase",
+        position: RH_POS,
+        fingers: RH,
+        clef: "treble",
+        notes: yankeeA,
+        lyrics: yankeeAWords,
+        say: "“Yankee Doodle went to town.” It starts with two middle C’s, thumb, then climbs to E.",
+        hint: "C C D E, then C E D.",
+        success: "That’s the line everyone knows.",
+      },
+      {
+        id: "yankee-2",
+        kind: "phrase",
+        position: [...RH_POS, 59],
+        fingers: RH_B,
+        clef: "treble",
+        notes: yankeeB,
+        lyrics: yankeeBWords,
+        say: "“A-riding on a pony.” The thumb steps down to B for “po-”, then back to middle C.",
+        hint: "B is the white key just left of middle C. Same thumb.",
+        success: "Thumb down, thumb home.",
+      },
+      {
+        id: "yankee-3",
+        kind: "phrase",
+        position: RH_POS,
+        fingers: RH,
+        clef: "treble",
+        notes: yankeeC,
+        lyrics: yankeeCWords,
+        say: "“Stuck a feather in his cap.” Finger 4 plays F on “in”.",
+        hint: "F is the white key just left of the three black keys.",
+        success: "The feather line.",
+      },
+      {
+        id: "yankee-4",
+        kind: "phrase",
+        position: [...RH_POS, 59],
+        fingers: RH_B,
+        clef: "treble",
+        notes: yankeeD,
+        lyrics: yankeeDWords,
+        say: "“And called it macaroni.” Same ending as pony: thumb down to B, then home on C.",
+        hint: "B on “ro-”, middle C on “ni”.",
+        success: "That’s the verse.",
+      },
+      {
+        id: "yankee-all",
+        kind: "phrase",
+        position: [...RH_POS, 59],
+        fingers: RH_B,
+        clef: "treble",
+        notes: [...yankeeA, ...yankeeB, ...yankeeC, ...yankeeD],
+        lyrics: [...yankeeAWords, ...yankeeBWords, ...yankeeCWords, ...yankeeDWords],
+        say: "All of Yankee Doodle, slowly. Sing the word you see.",
+        hint: "Start on middle C. Thumb steps down only for pony and macaroni.",
+        success: "Yankee Doodle, beginning to end.",
+      },
+    ],
+  },
+  {
     id: "left",
     title: "Left hand",
     blurb: "The same idea, one octave lower. Pinky on low C.",
@@ -489,7 +575,7 @@ export const UNITS: Unit[] = [
   {
     id: "recital",
     title: "Play it for someone",
-    blurb: "The two songs, slowly, all the way through.",
+    blurb: "The songs, slowly, all the way through.",
     steps: [
       {
         id: "recital-intro",
@@ -509,6 +595,18 @@ export const UNITS: Unit[] = [
         say: "Hot Cross Buns, for your audience. Right hand only.",
         hint: "Finger 3 starts on E.",
         success: "That’s a performance. Short is fine.",
+      },
+      {
+        id: "recital-yankee",
+        kind: "phrase",
+        position: [...RH_POS, 59],
+        fingers: RH_B,
+        clef: "treble",
+        notes: [...yankeeA, ...yankeeB, ...yankeeC, ...yankeeD],
+        lyrics: [...yankeeAWords, ...yankeeBWords, ...yankeeCWords, ...yankeeDWords],
+        say: "Yankee Doodle, the one she can already sing.",
+        hint: "Two C’s to start. Thumb down only on pony and macaroni.",
+        success: "She already knew how it goes. Now her hands do too.",
       },
       {
         id: "recital-mary",
