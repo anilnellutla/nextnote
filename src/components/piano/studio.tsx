@@ -313,12 +313,19 @@ function Path({
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-5 py-6 md:px-8 md:py-10">
       <div className="flex items-center gap-3">
         <img src="/aria.jpg" alt="" className="size-12 rounded-full object-cover" />
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-walnut">Lessons</h1>
           <p className="text-sm text-muted">
             {mode === "acoustic" ? "Listening to our piano" : "Practicing on the screen"}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setConfirm("all")}
+          className="min-h-11 shrink-0 rounded-xl border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
+        >
+          Reset progress
+        </button>
       </div>
       {resume ? (
         <button
@@ -360,11 +367,11 @@ function Path({
                   </span>
                 </span>
               </button>
-              {doneCount > 0 ? (
+              {open || doneCount > 0 ? (
                 <button
                   type="button"
                   onClick={() => setConfirm(unit.id)}
-                  className="shrink-0 rounded-card border border-line bg-ivory px-3 text-sm font-bold text-walnut"
+                  className="shrink-0 rounded-card border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
                 >
                   Reset
                 </button>
@@ -384,9 +391,6 @@ function Path({
         ) : null}
         <button type="button" onClick={onParents} className="min-h-11 rounded-xl px-3 text-sm font-bold text-muted">
           For parents
-        </button>
-        <button type="button" onClick={() => setConfirm("all")} className="min-h-11 rounded-xl px-3 text-sm font-bold text-walnut">
-          Reset progress
         </button>
       </div>
       {confirm ? (
@@ -451,6 +455,7 @@ function LessonRoom({
   const [earError, setEarError] = useState("");
   const [heard, setHeard] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
+  const [resetAsk, setResetAsk] = useState(false);
   const [hintOn, setHintOn] = useState(false);
   const [wrong, setWrong] = useState<number | null>(null);
 
@@ -706,9 +711,18 @@ function LessonRoom({
   if (step.kind === "talk") {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 py-6">
-        <button type="button" onClick={onExit} className="flex size-11 items-center justify-center rounded-full bg-ivory text-walnut" aria-label="Back to lessons">
-          <ArrowLeft className="size-5" aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={onExit} className="flex size-11 items-center justify-center rounded-full bg-ivory text-walnut" aria-label="Back to lessons">
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setResetAsk(true)}
+            className="ml-auto min-h-11 rounded-xl border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
+          >
+            Reset
+          </button>
+        </div>
         <p className="mt-6 text-sm font-extrabold text-felt">
           {place.unit.title} · {stepNumber} of {place.unit.steps.length}
         </p>
@@ -717,15 +731,20 @@ function LessonRoom({
         <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
           {place.next ? "Continue" : "Finish"}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            useStudio.getState().clearSteps([step.id]);
-          }}
-          className="mt-2 min-h-11 text-sm font-bold text-walnut"
-        >
-          Reset this lesson
-        </button>
+        {resetAsk ? (
+          <ResetSheet
+            onLesson={() => {
+              useStudio.getState().clearSteps([step.id]);
+              setResetAsk(false);
+            }}
+            onAll={() => {
+              useStudio.getState().resetProgress();
+              setResetAsk(false);
+              onExit();
+            }}
+            onClose={() => setResetAsk(false)}
+          />
+        ) : null}
       </div>
     );
   }
@@ -749,6 +768,13 @@ function LessonRoom({
           </p>
         </div>
         {mode === "acoustic" && listening ? <span className="listening-dot size-2 rounded-full bg-felt" /> : null}
+        <button
+          type="button"
+          onClick={() => setResetAsk(true)}
+          className="min-h-11 shrink-0 rounded-xl border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
+        >
+          Reset
+        </button>
       </header>
 
       <section className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-2">
@@ -808,6 +834,22 @@ function LessonRoom({
         </p>
       </div>
 
+      {resetAsk ? (
+        <ResetSheet
+          onLesson={() => {
+            useStudio.getState().clearSteps([step.id]);
+            restart();
+            setResetAsk(false);
+            setPaused(false);
+          }}
+          onAll={() => {
+            useStudio.getState().resetProgress();
+            setResetAsk(false);
+            onExit();
+          }}
+          onClose={() => setResetAsk(false)}
+        />
+      ) : null}
       {paused ? (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/40 p-4 md:items-center">
           <div className="w-full max-w-sm rounded-card bg-ivory p-5 shadow-card">
@@ -854,6 +896,38 @@ function LessonRoom({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ResetSheet({
+  onLesson,
+  onAll,
+  onClose,
+}: {
+  onLesson: () => void;
+  onAll: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 md:items-center" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+      <div className="w-full max-w-sm rounded-card bg-ivory p-5 shadow-card">
+        <h2 id="reset-title" className="font-display text-2xl text-ink">
+          Reset
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink">Choose what to clear. This cannot be undone.</p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button type="button" onClick={onLesson} className="min-h-11 rounded-xl bg-felt font-extrabold text-ivory">
+            This lesson
+          </button>
+          <button type="button" onClick={onAll} className="min-h-11 rounded-xl border border-line font-extrabold text-ink">
+            All progress
+          </button>
+          <button type="button" onClick={onClose} className="min-h-11 font-bold text-walnut">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
