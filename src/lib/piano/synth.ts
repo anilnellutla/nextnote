@@ -119,10 +119,6 @@ export function playNote(midi: number, when = 0, duration = 0.7): void {
   beep(midi);
 }
 
-export function playYes(): void {
-  playNote(84, 0, 0.12);
-}
-
 export async function playSequence(
   notes: number[],
   onEach: (midi: number, index: number) => void,

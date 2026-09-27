@@ -27,7 +27,7 @@ import {
   type Step,
 } from "@/lib/piano/curriculum";
 import { earIsOn, onLevel, onNote, startEar, stopEar } from "@/lib/piano/ear";
-import { playNote, playSequence, playYes, resumeSynth } from "@/lib/piano/synth";
+import { playNote, playSequence, resumeSynth } from "@/lib/piano/synth";
 import { rankAt, useStudio, type PracticeMode } from "@/lib/piano/store";
 import { coach, coachAccept, howToFind, kidName, letterOf } from "@/lib/piano/theory";
 
@@ -512,7 +512,6 @@ function LessonRoom({
   const mistakesRef = useRef(0);
   const advancing = useRef(false);
   const pausedRef = useRef(false);
-  const ignoreUntil = useRef(0);
   const deafUntil = useRef(0);
   const modeRef = useRef(mode);
   const onChangeRef = useRef(onChangeStep);
@@ -549,7 +548,6 @@ function LessonRoom({
     const offNote = onNote((midi) => {
       if (modeRef.current !== "acoustic") return;
       if (performance.now() < deafUntil.current) return;
-      if (performance.now() < ignoreUntil.current && midi > 76) return;
       setHeard(midi);
       grade(midi);
     });
@@ -662,8 +660,6 @@ function LessonRoom({
       return;
     }
 
-    playYes();
-    ignoreUntil.current = performance.now() + (current.kind === "phrase" ? 420 : 200);
     setWrong(null);
     setFlash(midi);
     window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
