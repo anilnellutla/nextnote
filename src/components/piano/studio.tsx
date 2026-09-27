@@ -5,6 +5,8 @@ import {
   Laptop,
   Lock,
   Mic,
+  Pause,
+  Play,
   RotateCcw,
   Star,
   Volume2,
@@ -26,10 +28,10 @@ import {
   unitUnlocked,
   type Step,
 } from "@/lib/piano/curriculum";
-import { earIsOn, onLevel, onNote, startEar, stopEar } from "@/lib/piano/ear";
-import { playNote, playSequence, resumeSynth } from "@/lib/piano/synth";
+import { earIsOn, onNote, startEar, stopEar } from "@/lib/piano/ear";
+import { playNote, playSequence, playYes, resumeSynth } from "@/lib/piano/synth";
 import { useStudio, type PracticeMode } from "@/lib/piano/store";
-import { coach, coachAccept, howToFind, kidName } from "@/lib/piano/theory";
+import { coach, coachAccept, howToFind, kidName, letterOf } from "@/lib/piano/theory";
 
 const KEY_MAP: Record<string, number> = {
   KeyZ: 48,
@@ -55,6 +57,35 @@ const KEY_MAP: Record<string, number> = {
 };
 
 type View = "choose" | "check" | "path" | "lesson";
+
+function NoteRibbon({
+  notes,
+  index,
+  fingers,
+  hint,
+}: {
+  notes: number[];
+  index: number;
+  fingers?: Record<number, string>;
+  hint: boolean;
+}) {
+  const start = Math.max(0, index - 1);
+  const slice = notes.slice(start, Math.min(notes.length, index + 4));
+  return (
+    <div className="note-ribbon">
+      {slice.map((midi, offset) => {
+        const at = start + offset;
+        const state = at < index ? "is-done" : at === index ? (hint ? "is-now" : "is-wait") : "";
+        return (
+          <div key={`${at}-${midi}`} className={`note-tile ${state}`}>
+            <span className="font-display text-2xl font-semibold leading-none">{letterOf(midi).replace("#", "♯")}</span>
+            {fingers?.[midi] ? <span className="text-xs font-extrabold">Finger {fingers[midi]}</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function starsFor(mistakes: number): number {
   if (mistakes <= 0) return 3;
@@ -373,18 +404,22 @@ function LessonRoom({
   const [listening, setListening] = useState(earIsOn);
   const [earError, setEarError] = useState("");
   const [heard, setHeard] = useState<number | null>(null);
-  const [loud, setLoud] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [hintOn, setHintOn] = useState(false);
+  const [wrong, setWrong] = useState<number | null>(null);
 
   const indexRef = useRef(0);
   const doneRef = useRef(false);
   const holdRef = useRef(false);
   const mistakesRef = useRef(0);
   const advancing = useRef(false);
+  const pausedRef = useRef(false);
   const modeRef = useRef(mode);
   const onChangeRef = useRef(onChangeStep);
   const onExitRef = useRef(onExit);
   const markRef = useRef(mark);
   modeRef.current = mode;
+  pausedRef.current = paused;
   onChangeRef.current = onChangeStep;
   onExitRef.current = onExit;
   markRef.current = mark;
@@ -404,22 +439,29 @@ function LessonRoom({
     setEarned(0);
     mistakesRef.current = 0;
     advancing.current = false;
+    setPaused(false);
+    setHintOn(false);
+    setWrong(null);
     if (step) useStudio.getState().rememberStep(step.id);
   }, [stepId, step]);
 
   useEffect(() => {
+    const current = stepRef.current;
+    if (!current || current.kind === "talk" || current.kind === "explore" || done) return;
+    setHintOn(false);
+    setWrong(null);
+    const timer = window.setTimeout(() => setHintOn(true), 900);
+    return () => window.clearTimeout(timer);
+  }, [stepId, index, done]);
+
+  useEffect(() => {
     const offNote = onNote((midi) => {
       if (modeRef.current !== "acoustic") return;
+      setHeard(midi);
       grade(midi);
-    });
-    const offLevel = onLevel(({ rms, midi }) => {
-      const nextLoud = rms >= 0.012;
-      setLoud((prev) => (prev === nextLoud ? prev : nextLoud));
-      if (midi != null) setHeard((prev) => (prev === midi ? prev : midi));
     });
     return () => {
       offNote();
-      offLevel();
     };
   }, []);
 
@@ -463,13 +505,14 @@ function LessonRoom({
   }
 
   function grade(midi: number) {
-    setFlash(midi);
-    window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
-    if (holdRef.current || doneRef.current || advancing.current) return;
+    if (pausedRef.current || holdRef.current || doneRef.current || advancing.current) return;
     const current = stepRef.current;
     if (!current || current.kind === "talk") return;
+    setHeard(midi);
 
     if (current.kind === "explore") {
+      setFlash(midi);
+      window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
       setReply(`That's ${kidName(midi)}. ${howToFind(midi)}`);
       setTone("idle");
       return;
@@ -478,6 +521,10 @@ function LessonRoom({
     if (current.kind === "find") {
       const message = coachAccept(midi, current.accept);
       if (message == null) {
+        playYes();
+        setWrong(null);
+        setFlash(midi);
+        window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
         const stars = starsFor(mistakesRef.current);
         setEarned(stars);
         setReply(current.success);
@@ -490,6 +537,8 @@ function LessonRoom({
         }, 900);
       } else {
         mistakesRef.current += 1;
+        setWrong(midi);
+        setHintOn(true);
         const only = current.accept.length === 1 ? current.accept[0] : null;
         const finger = only != null ? current.fingers?.[only] : undefined;
         setReply(finger ? `${message} Finger ${finger}.` : message);
@@ -501,6 +550,10 @@ function LessonRoom({
     const want = current.notes[indexRef.current];
     if (want == null) return;
     if (midi === want) {
+      playYes();
+      setWrong(null);
+      setFlash(midi);
+      window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
       const atEnd = indexRef.current + 1 >= current.notes.length;
       if (atEnd) {
         const stars = starsFor(mistakesRef.current);
@@ -515,12 +568,14 @@ function LessonRoom({
         indexRef.current = nextIndex;
         setIndex(nextIndex);
         const word = current.lyrics?.[nextIndex];
-        setReply(word ? `Yes. Next word: ${word}.` : "Yes. Next note.");
+        setReply(word ? `Yes. ${word}` : "Yes.");
         setTone("good");
       }
       return;
     }
     mistakesRef.current += 1;
+    setWrong(midi);
+    setHintOn(true);
     const finger = current.fingers?.[want];
     const word = current.lyrics?.[indexRef.current];
     const extra = [finger ? `Finger ${finger}.` : "", word ? `The word is "${word}".` : ""].filter(Boolean).join(" ");
@@ -579,7 +634,6 @@ function LessonRoom({
 
   const phraseIndex = done && step.kind === "phrase" ? step.notes.length - 1 : index;
   const highlights = highlightOf(step, phraseIndex);
-  const hasGlow = !done && highlights.length > 0;
   const say = mode === "screen" && step.sayScreen ? step.sayScreen : step.say;
   const target = targetOf(step, done && step.kind === "phrase" ? step.notes.length - 1 : index);
   const clef = clefFor(step, step.kind === "explore" ? heard : target);
@@ -599,156 +653,153 @@ function LessonRoom({
   const lyric = step.kind === "phrase" ? step.lyrics?.[done ? step.lyrics.length - 1 : index] : null;
   const fingerNow = target != null ? step.fingers?.[target] : undefined;
   const stepNumber = place.unit.steps.findIndex((item) => item.id === step.id) + 1;
-  const replyClass = tone === "good" ? "text-felt" : tone === "fix" ? "text-walnut" : "text-ink";
+  const replyClass = tone === "good" ? "text-yes" : tone === "fix" ? "text-walnut" : "text-ink";
+  const showHint = hintOn && !done && step.kind !== "talk" && step.kind !== "explore";
+  const ribbonNotes = step.kind === "phrase" ? step.notes : step.kind === "find" ? [step.accept[0]] : [];
 
-  let pill = hasGlow ? "Tap the glowing key" : "Tap any key";
-  if (holding) pill = "Playing the example…";
-  else if (done && mode === "screen") pill = "Ready for the next step";
-  else if (mode === "acoustic" && !listening) pill = "Tap Listen";
-  else if (mode === "acoustic" && heard != null && loud) pill = kidName(heard);
-  else if (mode === "acoustic") pill = "Listening…";
-
-  return (
-    <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-5xl flex-col px-4 py-4 md:px-8 md:py-6">
-      <header className="flex items-center gap-3">
+  if (step.kind === "talk") {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 py-6">
         <button type="button" onClick={onExit} className="flex size-11 items-center justify-center rounded-full bg-ivory text-walnut" aria-label="Back to lessons">
           <ArrowLeft className="size-5" aria-hidden="true" />
         </button>
-        <img src="/aria.jpg" alt="" className="size-11 rounded-full object-cover" />
-        <div className="min-w-0">
-          <p className="font-display text-lg leading-tight text-walnut">Next Note</p>
-          <p className="truncate text-sm text-muted">
-            {place.unit.title} · {stepNumber} of {place.unit.steps.length}
+        <p className="mt-6 text-sm font-extrabold text-felt">
+          {place.unit.title} · {stepNumber} of {place.unit.steps.length}
+        </p>
+        <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{say}</h1>
+        {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
+        <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
+          {place.next ? "Continue" : "Finish"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-5xl flex-col">
+      <header className="flex items-center gap-2 px-3 py-3">
+        <button
+          type="button"
+          onClick={() => setPaused(true)}
+          className="flex size-11 items-center justify-center rounded-full bg-ivory text-ink"
+          aria-label="Pause"
+        >
+          <Pause className="size-5" aria-hidden="true" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-lg leading-tight text-ink">{place.unit.title}</p>
+          <p className="text-xs font-bold text-muted">
+            Waits for you · {stepNumber} of {place.unit.steps.length}
+            {step.kind === "phrase" ? ` · note ${index + 1} of ${step.notes.length}` : ""}
           </p>
         </div>
-        <p className="ml-auto flex items-center gap-2 text-sm font-bold text-felt">
-          {mode === "acoustic" && listening && !holding ? <span className="listening-dot size-2 rounded-full bg-felt" /> : null}
-          <span className="max-w-40 text-right">{pill}</span>
-        </p>
+        {mode === "acoustic" && listening ? <span className="listening-dot size-2 rounded-full bg-felt" /> : null}
       </header>
 
-      <section className="mt-4 rounded-card bg-ivory p-4 shadow-card md:p-6">
-        <p className="text-lg font-bold leading-snug text-ink">{say}</p>
-        {lyric ? (
-          <p className="mt-3 font-display text-3xl font-semibold text-walnut">
-            {lyric}
-            {fingerNow ? <span className="ml-3 text-base font-bold text-felt">Finger {fingerNow}</span> : null}
-          </p>
-        ) : null}
+      <section className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-2">
+        <p className="max-w-xl text-center text-base font-bold leading-snug text-ink">{say}</p>
+        {clef && staffNotes.length > 0 ? <Staff notes={staffNotes} index={staffIndex} clef={clef} /> : null}
+        {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
+        {ribbonNotes.length > 0 ? (
+          <NoteRibbon notes={ribbonNotes} index={step.kind === "phrase" ? index : 0} fingers={step.fingers} hint={showHint} />
+        ) : (
+          <p className="font-display text-5xl font-semibold text-walnut">{heard != null ? kidName(heard) : "Play one key"}</p>
+        )}
+        {lyric ? <p className="font-display text-3xl font-semibold text-walnut">{lyric}</p> : null}
+        {fingerNow && showHint ? <p className="text-sm font-extrabold text-felt">Finger {fingerNow}</p> : null}
         {reply ? (
-          <p className={`mt-3 text-base font-bold leading-snug ${replyClass}`} aria-live="polite">
+          <p className={`text-center text-base font-bold ${replyClass}`} aria-live="polite">
             {reply}
           </p>
         ) : null}
         {done && earned > 0 ? <Stars n={earned} /> : null}
-        {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
-        {clef && staffNotes.length > 0 ? <Staff notes={staffNotes} index={staffIndex} clef={clef} /> : null}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {demoOf(step).length > 0 ? (
-            <button
-              type="button"
-              disabled={holding}
-              onClick={() => void hear()}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber px-4 py-2 font-extrabold text-ink disabled:opacity-50"
-            >
-              <Volume2 className="size-4" aria-hidden="true" />
-              Hear it
+        <div className="flex flex-wrap justify-center gap-2">
+          {!showHint && !done && step.kind !== "explore" ? (
+            <button type="button" onClick={() => setHintOn(true)} className="min-h-11 rounded-xl bg-amber px-4 py-2 font-extrabold text-ink">
+              Show the yellow key
             </button>
           ) : null}
-          {step.hint ? (
-            <button
-              type="button"
-              onClick={() => {
-                setReply(step.hint);
-                setTone("idle");
-              }}
-              className="min-h-11 rounded-xl bg-paper px-4 py-2 font-extrabold text-ink"
-            >
-              Hint
-            </button>
-          ) : null}
-          {step.kind === "phrase" ? (
-            <button type="button" onClick={restart} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-walnut">
-              <RotateCcw className="size-4" aria-hidden="true" />
-              Start this line again
-            </button>
-          ) : null}
-          {step.kind === "talk" || step.kind === "explore" || done ? (
+          {done || step.kind === "explore" ? (
             <button type="button" onClick={goNext} className="min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
-              {place.next ? "Next" : "Finish"}
+              {place.next ? "Continue" : "Finish"}
             </button>
           ) : null}
         </div>
-        {mode === "acoustic" && !listening ? (
-          <div className="mt-4 rounded-xl bg-paper p-3">
-            <p className="text-sm leading-relaxed text-ink">
-              I can’t hear the piano until you tap Listen. The device should be on the music stand, not in a lap under the keys.
-            </p>
-            {earError ? <p className="mt-2 text-sm font-bold text-walnut">{earError}</p> : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => void listen()} className="min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
-                Listen
-              </button>
-              <button type="button" onClick={onCheck} className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-walnut">
-                Setup help
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  stopEar();
-                  setListening(false);
-                  setMode("screen");
-                }}
-                className="min-h-11 rounded-xl px-3 py-2 text-sm font-bold text-walnut"
-              >
-                Use on-screen keys
-              </button>
-            </div>
-          </div>
-        ) : null}
       </section>
 
-      <div className="mt-4 min-w-0">
+      <div className="min-w-0 px-3 pb-4">
+        {mode === "acoustic" && !listening ? (
+          <div className="mb-3 rounded-xl bg-ivory p-3 shadow-card">
+            <p className="text-sm text-ink">Tap Listen, then play the note on your piano. The song will wait.</p>
+            {earError ? <p className="mt-1 text-sm font-bold text-walnut">{earError}</p> : null}
+            <button type="button" onClick={() => void listen()} className="mt-2 min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
+              Listen
+            </button>
+          </div>
+        ) : null}
         <Keyboard
-          fingers={step.fingers}
+          fingers={showHint ? step.fingers : undefined}
           position={step.position}
-          targets={highlights}
+          targets={showHint ? highlights : []}
+          heard={wrong}
           flash={flash}
-          interactive={mode === "screen"}
+          interactive={mode === "screen" && !paused}
           onPlay={grade}
         />
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 text-center text-sm text-muted">
           {mode === "acoustic"
-            ? "Watch the keys, play them on your piano. One note at a time."
-            : hasGlow
-              ? "The amber key is the one to play. It pulses so you can find it."
-              : "Tap any key. It will sound, and I’ll name it when the step asks."}
+            ? "Grey is the note I heard. Yellow is the one to play. Blue means you got it."
+            : "Tap the key. Yellow is the hint. Blue means it was right."}
         </p>
-        {mode === "screen" ? (
-          <button
-            type="button"
-            onClick={() => {
-              setMode("acoustic");
-              setListening(earIsOn());
-            }}
-            className="mt-1 min-h-11 text-sm font-bold text-walnut"
-          >
-            Switch to our piano
-          </button>
-        ) : listening ? (
-          <button
-            type="button"
-            onClick={() => {
-              stopEar();
-              setListening(false);
-              setMode("screen");
-            }}
-            className="mt-1 min-h-11 text-sm font-bold text-walnut"
-          >
-            Switch to on-screen keys
-          </button>
-        ) : null}
       </div>
+
+      {paused ? (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/40 p-4 md:items-center">
+          <div className="w-full max-w-sm rounded-card bg-ivory p-5 shadow-card">
+            <h2 className="font-display text-2xl text-ink">Paused</h2>
+            <div className="mt-4 flex flex-col gap-2">
+              <button type="button" onClick={() => setPaused(false)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-felt font-extrabold text-ivory">
+                <Play className="size-4" aria-hidden="true" />
+                Continue
+              </button>
+              {demoOf(step).length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaused(false);
+                    void hear();
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber font-extrabold text-ink"
+                >
+                  <Volume2 className="size-4" aria-hidden="true" />
+                  Hear it
+                </button>
+              ) : null}
+              {step.kind === "phrase" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    restart();
+                    setPaused(false);
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl font-bold text-walnut"
+                >
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                  Start this line again
+                </button>
+              ) : null}
+              <button type="button" onClick={onExit} className="min-h-11 font-bold text-muted">
+                Back to lessons
+              </button>
+              {mode === "acoustic" ? (
+                <button type="button" onClick={onCheck} className="min-h-11 text-sm font-bold text-walnut">
+                  Microphone setup
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

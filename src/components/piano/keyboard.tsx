@@ -10,12 +10,13 @@ type Props = {
   fingers?: Record<number, string>;
   position?: number[];
   targets: number[];
+  heard?: number | null;
   flash: number | null;
   interactive: boolean;
   onPlay: (midi: number) => void;
 };
 
-export function Keyboard({ fingers, position, targets, flash, interactive, onPlay }: Props) {
+export function Keyboard({ fingers, position, targets, heard, flash, interactive, onPlay }: Props) {
   return (
     <div className="overflow-x-auto rounded-2xl bg-walnut p-3 pb-4 piano-scroll">
       <div className="piano-keys">
@@ -26,6 +27,7 @@ export function Keyboard({ fingers, position, targets, flash, interactive, onPla
             black={false}
             finger={fingers?.[midi]}
             hot={position?.includes(midi) ?? false}
+            heard={midi === heard}
             target={targets.includes(midi)}
             flash={midi === flash}
             interactive={interactive}
@@ -39,6 +41,7 @@ export function Keyboard({ fingers, position, targets, flash, interactive, onPla
             black
             finger={fingers?.[midi]}
             hot={position?.includes(midi) ?? false}
+            heard={midi === heard}
             target={targets.includes(midi)}
             flash={midi === flash}
             interactive={interactive}
@@ -56,6 +59,7 @@ function Key({
   black,
   finger,
   hot,
+  heard,
   target,
   flash,
   interactive,
@@ -66,25 +70,24 @@ function Key({
   black: boolean;
   finger?: string;
   hot: boolean;
+  heard: boolean;
   target: boolean;
   flash: boolean;
   interactive: boolean;
   onPlay: (midi: number) => void;
   left?: string;
 }) {
-  const tone = black
-    ? flash
-      ? "bg-felt text-ivory"
-      : target
-        ? "key-target"
-        : "bg-ink text-ivory"
-    : flash
-      ? "bg-felt text-ivory"
-      : target
-        ? "key-target"
-        : hot
-          ? "bg-ivory text-ink ring-2 ring-amber ring-inset"
-          : "bg-ivory text-ink";
+  const tone = flash
+    ? "key-yes"
+    : target
+      ? "key-target"
+      : heard
+        ? "key-heard"
+        : black
+          ? "bg-ink text-ivory"
+          : hot
+            ? "bg-ivory text-ink ring-2 ring-amber ring-inset"
+            : "bg-ivory text-ink";
 
   return (
     <button

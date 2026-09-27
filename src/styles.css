@@ -11,7 +11,8 @@
   --color-line: #e0d3c2;
   --color-walnut: #4a2c1c;
   --color-felt: #1e4d3d;
-  --color-amber: #d4782f;
+  --color-amber: #e6b325;
+  --color-yes: #2f6bed;
 
   --shadow-card: 0 1px 0 rgb(28 22 18 / 0.05), 0 16px 40px rgb(74 44 28 / 0.1);
   --radius-card: 1.25rem;
@@ -178,6 +179,14 @@
     color: var(--color-ink);
     animation: key-glow 1s ease-in-out infinite;
   }
+  .key-yes {
+    background-color: var(--color-yes);
+    color: var(--color-ivory);
+  }
+  .key-heard {
+    background-color: var(--color-muted);
+    color: var(--color-ivory);
+  }
 }
 
 @keyframes listen-pulse {
@@ -192,6 +201,51 @@
 
 .listening-dot {
   animation: listen-pulse 1.4s ease-in-out infinite;
+}
+
+.note-ribbon {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 6.5rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.note-tile {
+  display: flex;
+  width: 3.25rem;
+  height: 4.25rem;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  border: 2px solid var(--color-line);
+  border-radius: 0.9rem;
+  background: var(--color-ivory);
+  color: var(--color-ink);
+}
+
+.note-tile.is-wait {
+  height: 5.5rem;
+  width: 4.25rem;
+  border-color: var(--color-ink);
+}
+
+.note-tile.is-now {
+  height: 5.5rem;
+  width: 4.25rem;
+  border-color: var(--color-amber);
+  background: var(--color-amber);
+}
+
+.note-tile.is-done {
+  height: 3.5rem;
+  border-color: var(--color-yes);
+  background: var(--color-yes);
+  color: var(--color-ivory);
 }
 
 @media (min-width: 48rem) {
