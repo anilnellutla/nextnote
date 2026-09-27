@@ -15,7 +15,7 @@ export function analyze(samples: Float32Array, sampleRate: number): Analysis {
   let energy = 0;
   for (let i = 0; i < n; i++) energy += samples[i] * samples[i];
   const rms = Math.sqrt(energy / Math.max(1, n));
-  if (n < 256 || rms < 0.012) return { rms, pitch: null };
+  if (n < 256 || rms < 0.0035) return { rms, pitch: null };
 
   const step = n >= 1024 ? 2 : 1;
   const sr = sampleRate / step;

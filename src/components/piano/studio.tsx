@@ -25,7 +25,7 @@ import {
   unitCleared,
   type Step,
 } from "@/lib/piano/curriculum";
-import { earIsOn, onNote, startEar, stopEar } from "@/lib/piano/ear";
+import { earIsOn, onLevel, onNote, startEar, stopEar } from "@/lib/piano/ear";
 import { playNote, playSequence, playYes, resumeSynth } from "@/lib/piano/synth";
 import { useStudio, type PracticeMode } from "@/lib/piano/store";
 import { coach, coachAccept, howToFind, kidName, letterOf } from "@/lib/piano/theory";
@@ -461,6 +461,7 @@ function LessonRoom({
   const [listening, setListening] = useState(earIsOn);
   const [earError, setEarError] = useState("");
   const [heard, setHeard] = useState<number | null>(null);
+  const [hearing, setHearing] = useState(false);
   const [paused, setPaused] = useState(false);
   const [resetAsk, setResetAsk] = useState(false);
   const [hintOn, setHintOn] = useState(false);
@@ -472,6 +473,7 @@ function LessonRoom({
   const mistakesRef = useRef(0);
   const advancing = useRef(false);
   const pausedRef = useRef(false);
+  const ignoreUntil = useRef(0);
   const modeRef = useRef(mode);
   const onChangeRef = useRef(onChangeStep);
   const onExitRef = useRef(onExit);
@@ -515,11 +517,17 @@ function LessonRoom({
   useEffect(() => {
     const offNote = onNote((midi) => {
       if (modeRef.current !== "acoustic") return;
+      if (performance.now() < ignoreUntil.current) return;
       setHeard(midi);
       grade(midi);
     });
+    const offLevel = onLevel(({ rms }) => {
+      const loud = rms >= 0.005;
+      setHearing((prev) => (prev === loud ? prev : loud));
+    });
     return () => {
       offNote();
+      offLevel();
     };
   }, []);
 
@@ -580,6 +588,7 @@ function LessonRoom({
       const message = coachAccept(midi, current.accept);
       if (message == null) {
         playYes();
+        ignoreUntil.current = performance.now() + 420;
         setWrong(null);
         setFlash(midi);
         window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
@@ -609,6 +618,7 @@ function LessonRoom({
     if (want == null) return;
     if (midi === want) {
       playYes();
+      ignoreUntil.current = performance.now() + 420;
       setWrong(null);
       setFlash(midi);
       window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
@@ -625,8 +635,10 @@ function LessonRoom({
         const nextIndex = indexRef.current + 1;
         indexRef.current = nextIndex;
         setIndex(nextIndex);
+        const nextNote = current.notes[nextIndex];
         const word = current.lyrics?.[nextIndex];
-        setReply(word ? `Yes. ${word}` : "Yes.");
+        if (nextNote === midi) setReply("Yes. Let the key up, then play that note again.");
+        else setReply(word ? `Yes. ${word}` : "Yes.");
         setTone("good");
       }
       return;
@@ -816,6 +828,15 @@ function LessonRoom({
       </section>
 
       <div className="min-w-0 px-3 pb-4">
+        {mode === "acoustic" && listening ? (
+          <p className="mb-2 text-center text-sm font-extrabold text-ink" aria-live="polite">
+            {hearing
+              ? heard != null
+                ? `Hearing ${kidName(heard)}. Let the key up before the next note.`
+                : "I hear sound. Play one note and let it go."
+              : "Listening. Play one note, a little closer if I stay quiet."}
+          </p>
+        ) : null}
         {mode === "acoustic" && !listening ? (
           <div className="mb-3 rounded-xl bg-ivory p-3 shadow-card">
             <p className="text-sm text-ink">Tap Listen, then play the note on your piano. The song will wait.</p>
@@ -836,7 +857,7 @@ function LessonRoom({
         />
         <p className="mt-2 text-center text-sm text-muted">
           {mode === "acoustic"
-            ? "Grey is the note I heard. Yellow is the one to play. Blue means you got it."
+            ? "Grey is what I heard. Yellow is the note to play. Blue means it was right."
             : "Tap the key. Yellow is the hint. Blue means it was right."}
         </p>
       </div>

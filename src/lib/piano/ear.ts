@@ -45,6 +45,114 @@ export async function startEar(): Promise<void> {
   return starting;
 }
 
+type Phase = "idle" | "attack" | "confirm" | "held";
+
+/** Turns a stream of pitch frames into one event per key press, including repeats. */
+export function createHearer(emit: (midi: number) => void) {
+  let floor = 0.004;
+  let phase: Phase = "idle";
+  let attackLeft = 0;
+  let votes: number[] = [];
+  let heldMidi: number | null = null;
+  let peak = 0;
+  let sawDip = false;
+  let quiet = 0;
+  let nextMidi: number | null = null;
+  let nextCount = 0;
+
+  function agreed(list: number[]): number | null {
+    if (list.length < 2) return null;
+    const last = list[list.length - 1];
+    return last === list[list.length - 2] ? last : null;
+  }
+
+  return {
+    push(frame: { rms: number; midi: number | null; confidence: number }) {
+      const gate = Math.max(0.0045, floor * 2.2);
+      const loud = frame.rms >= gate;
+      if (!loud) {
+        floor = floor * 0.95 + frame.rms * 0.05;
+        quiet += 1;
+        if (quiet >= 3) {
+          phase = "idle";
+          votes = [];
+          heldMidi = null;
+          peak = 0;
+          sawDip = false;
+          nextMidi = null;
+          nextCount = 0;
+        }
+        return;
+      }
+      quiet = 0;
+      const midi = frame.midi != null && frame.confidence >= 0.72 ? frame.midi : null;
+
+      if (phase === "idle") {
+        phase = "attack";
+        attackLeft = 1;
+        votes = [];
+        peak = frame.rms;
+        sawDip = false;
+        nextMidi = null;
+        nextCount = 0;
+        return;
+      }
+
+      if (frame.rms > peak) peak = frame.rms;
+
+      if (phase === "attack") {
+        attackLeft -= 1;
+        if (attackLeft > 0) return;
+        phase = "confirm";
+      }
+
+      if (phase === "confirm") {
+        if (midi != null) votes.push(midi);
+        if (votes.length > 7) votes.shift();
+        const chosen = agreed(votes);
+        if (chosen == null) return;
+        heldMidi = chosen;
+        phase = "held";
+        peak = frame.rms;
+        sawDip = false;
+        emit(chosen);
+        return;
+      }
+
+      if (frame.rms < peak * 0.5) sawDip = true;
+      if (midi == null) {
+        nextMidi = null;
+        nextCount = 0;
+        return;
+      }
+      if (midi === heldMidi) {
+        nextMidi = null;
+        nextCount = 0;
+        if (sawDip && frame.rms > peak * 0.58) {
+          sawDip = false;
+          peak = frame.rms;
+          emit(midi);
+        }
+        return;
+      }
+      if (midi === nextMidi) nextCount += 1;
+      else {
+        nextMidi = midi;
+        nextCount = 1;
+      }
+      if (nextCount >= 2) {
+        heldMidi = midi;
+        nextCount = 0;
+        nextMidi = null;
+        sawDip = false;
+        peak = frame.rms;
+        votes = [midi, midi, midi];
+        emit(midi);
+      }
+    },
+  };
+}
+
 async function openEar(): Promise<void> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("This browser doesn't have a microphone.");
@@ -59,7 +167,7 @@ async function openEar(): Promise<void> {
       video: false,
     });
   } catch {
-    throw new Error("The browser didn't share the microphone.");
+    throw new Error("The browser didn't share the microphone. Allow it, then tap Listen again.");
   }
 
   const AC =
@@ -68,39 +176,26 @@ async function openEar(): Promise<void> {
   audio = new AC();
   await audio.resume();
   const analyser = audio.createAnalyser();
-  analyser.fftSize = 2048;
+  analyser.fftSize = 4096;
+  analyser.smoothingTimeConstant = 0;
   audio.createMediaStreamSource(stream).connect(analyser);
   const buffer = new Float32Array(analyser.fftSize);
   running = true;
 
-  let pending: number | null = null;
-  let count = 0;
-  let lastEmit = 0;
-  let lastMidi = -1;
+  const hearer = createHearer((midi) => {
+    for (const handler of noteHandlers) handler(midi);
+  });
 
   timer = window.setInterval(() => {
     if (!running || !audio) return;
+    if (audio.state === "suspended") void audio.resume();
     analyser.getFloatTimeDomainData(buffer);
     const hit = analyze(buffer, audio.sampleRate);
-    const midi = hit.pitch?.midi ?? null;
-    for (const handler of levelHandlers) handler({ rms: hit.rms, midi });
-    if (midi == null) {
-      pending = null;
-      count = 0;
-      return;
-    }
-    if (midi === pending) count += 1;
-    else {
-      pending = midi;
-      count = 1;
-    }
-    if (count < 3) return;
-    const now = performance.now();
-    if (midi === lastMidi && now - lastEmit < 420) return;
-    if (now - lastEmit < 160) return;
-    lastEmit = now;
-    lastMidi = midi;
-    count = 0;
-    for (const handler of noteHandlers) handler(midi);
-  }, 48);
+    for (const handler of levelHandlers) handler({ rms: hit.rms, midi: hit.pitch?.midi ?? null });
+    hearer.push({
+      rms: hit.rms,
+      midi: hit.pitch?.midi ?? null,
+      confidence: hit.pitch?.confidence ?? 0,
+    });
+  }, 50);
 }
