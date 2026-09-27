@@ -107,6 +107,7 @@ export function Studio() {
   }, [hydrate]);
 
   function pick(next: PracticeMode) {
+    resumeSynth();
     setMode(next);
     if (next === "screen") stopEar();
     if (next === "acoustic" && !useStudio.getState().micReady) setView("check");
@@ -510,6 +511,7 @@ function LessonRoom({
   const advancing = useRef(false);
   const pausedRef = useRef(false);
   const ignoreUntil = useRef(0);
+  const deafUntil = useRef(0);
   const modeRef = useRef(mode);
   const onChangeRef = useRef(onChangeStep);
   const onExitRef = useRef(onExit);
@@ -544,6 +546,7 @@ function LessonRoom({
   useEffect(() => {
     const offNote = onNote((midi) => {
       if (modeRef.current !== "acoustic") return;
+      if (performance.now() < deafUntil.current) return;
       if (performance.now() < ignoreUntil.current && midi > 76) return;
       setHeard(midi);
       grade(midi);
@@ -886,8 +889,11 @@ function LessonRoom({
           targets={showHint ? highlights : []}
           heard={wrong}
           flash={flash}
-          interactive={mode === "screen" && !paused}
-          onPlay={grade}
+          interactive={!paused}
+          onPlay={(midi) => {
+            if (mode === "screen") grade(midi);
+            else deafUntil.current = performance.now() + 800;
+          }}
         />
       </div>
 
