@@ -75,7 +75,8 @@ export function analyze(samples: Float32Array, sampleRate: number): Analysis {
   const frequency = sr / betterTau;
   if (frequency < 60 || frequency > 1600) return { rms, pitch: null };
 
-  const midiFloat = 69 + 12 * Math.log2(frequency / 440);
+  const heard = fundamental(x, sr, frequency);
+  const midiFloat = 69 + 12 * Math.log2(heard / 440);
   const midi = Math.round(midiFloat);
   const nearest = 440 * 2 ** ((midi - 69) / 12);
   const cents = Math.abs(1200 * Math.log2(frequency / nearest));
@@ -89,4 +90,28 @@ export function analyze(samples: Float32Array, sampleRate: number): Analysis {
       confidence: Math.max(0, 1 - x1),
     },
   };
+}
+
+/** If the pitch locked onto a harmonic, and the octave below is actually there, use that. */
+function fundamental(samples: Float32Array, sampleRate: number, frequency: number): number {
+  let f = frequency;
+  for (let octave = 0; octave < 2; octave++) {
+    if (f < 130) break;
+    const lower = f / 2;
+    if (magnitude(samples, sampleRate, lower) > magnitude(samples, sampleRate, f) * 0.85) f = lower;
+    else break;
+  }
+  return f;
+}
+
+function magnitude(samples: Float32Array, sampleRate: number, frequency: number): number {
+  const coeff = 2 * Math.cos((2 * Math.PI * frequency) / sampleRate);
+  let s1 = 0;
+  let s2 = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s0 = samples[i] + coeff * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+  }
+  return s1 * s1 + s2 * s2 - coeff * s1 * s2;
 }
