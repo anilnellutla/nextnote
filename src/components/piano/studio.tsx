@@ -27,7 +27,7 @@ import {
 } from "@/lib/piano/curriculum";
 import { earIsOn, onLevel, onNote, startEar, stopEar } from "@/lib/piano/ear";
 import { playNote, playSequence, playYes, resumeSynth } from "@/lib/piano/synth";
-import { useStudio, type PracticeMode } from "@/lib/piano/store";
+import { rankAt, useStudio, type PracticeMode } from "@/lib/piano/store";
 import { coach, coachAccept, howToFind, kidName, letterOf } from "@/lib/piano/theory";
 
 const KEY_MAP: Record<string, number> = {
@@ -285,6 +285,42 @@ function MicCheck({
   );
 }
 
+function ScoreCard() {
+  const points = useStudio((s) => s.points);
+  const streak = useStudio((s) => s.streak);
+  const rank = rankAt(points);
+  return (
+    <section className="mt-5 rounded-card bg-ivory p-4 shadow-card" aria-label="Practice points">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-extrabold text-felt">{rank.name}</p>
+          <p className="font-display text-4xl leading-none text-walnut">{points}</p>
+        </div>
+        <p className="text-right text-sm font-extrabold text-ink">
+          {streak > 1 ? `${streak} days in a row` : "Points for every note"}
+        </p>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-paper">
+        <div className="h-full rounded-full bg-felt" style={{ width: `${Math.round(rank.progress * 100)}%` }} />
+      </div>
+      <p className="mt-2 text-sm text-muted">
+        {rank.next ? `${rank.left} points to ${rank.next}` : "Top rank. Keep playing — the points still count."}
+      </p>
+    </section>
+  );
+}
+
+function ScoreChip() {
+  const points = useStudio((s) => s.points);
+  const rank = rankAt(points);
+  return (
+    <p className="shrink-0 text-right leading-tight">
+      <span className="block font-display text-lg text-walnut">{points}</span>
+      <span className="block text-xs font-extrabold text-felt">{rank.name}</span>
+    </p>
+  );
+}
+
 function stepLabel(step: Step): string {
   const text = (step.sayScreen ?? step.say).split(". ")[0];
   return text.length > 84 ? `${text.slice(0, 81)}…` : text;
@@ -328,6 +364,7 @@ function Path({
           Reset progress
         </button>
       </div>
+      <ScoreCard />
       {resume ? (
         <button
           type="button"
@@ -466,6 +503,8 @@ function LessonRoom({
   const [resetAsk, setResetAsk] = useState(false);
   const [hintOn, setHintOn] = useState(false);
   const [wrong, setWrong] = useState<number | null>(null);
+  const [pop, setPop] = useState<string | null>(null);
+  const discovered = useRef(new Set<number>());
 
   const indexRef = useRef(0);
   const doneRef = useRef(false);
@@ -502,6 +541,7 @@ function LessonRoom({
     setPaused(false);
     setHintOn(false);
     setWrong(null);
+    discovered.current = new Set();
     if (step) useStudio.getState().rememberStep(step.id);
   }, [stepId, step]);
 
@@ -559,12 +599,21 @@ function LessonRoom({
     });
   }, [stepId, index]);
 
+  function award(amount: number) {
+    const rankUp = useStudio.getState().addPoints(amount);
+    setPop(rankUp ? rankUp : `+${amount}`);
+    window.setTimeout(() => setPop((current) => (current === (rankUp ? rankUp : `+${amount}`) ? null : current)), 1000);
+  }
+
   function goNext() {
     const current = stepRef.current;
     if (!current) return;
     const here = locate(current.id);
     if (!here) return;
-    if (current.kind === "talk") markRef.current(current.id, 0);
+    if (current.kind === "talk") {
+      markRef.current(current.id, 0);
+      award(5);
+    }
     if (current.kind === "explore") markRef.current(current.id, 3);
     if (here.next) onChangeRef.current(here.next.step.id);
     else onExitRef.current();
@@ -579,6 +628,10 @@ function LessonRoom({
     if (current.kind === "explore") {
       setFlash(midi);
       window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
+      if (!discovered.current.has(midi)) {
+        discovered.current.add(midi);
+        award(5);
+      }
       setReply(`That's ${kidName(midi)}. ${howToFind(midi)}`);
       setTone("idle");
       return;
@@ -597,6 +650,7 @@ function LessonRoom({
         setReply(current.success);
         setTone("good");
         markRef.current(current.id, stars);
+        award(10 + (mistakesRef.current === 0 ? 30 : mistakesRef.current <= 2 ? 15 : 5));
         advancing.current = true;
         window.setTimeout(() => {
           advancing.current = false;
@@ -623,6 +677,8 @@ function LessonRoom({
       setFlash(midi);
       window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
       const atEnd = indexRef.current + 1 >= current.notes.length;
+      const clearBonus = atEnd ? (mistakesRef.current === 0 ? 30 : mistakesRef.current <= 2 ? 15 : 5) : 0;
+      award(10 + clearBonus);
       if (atEnd) {
         const stars = starsFor(mistakesRef.current);
         setEarned(stars);
@@ -737,10 +793,11 @@ function LessonRoom({
           <button
             type="button"
             onClick={() => setResetAsk(true)}
-            className="ml-auto min-h-11 rounded-xl border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
+            className="min-h-11 rounded-xl border border-line bg-ivory px-3 text-sm font-extrabold text-walnut"
           >
             Reset
           </button>
+          <ScoreChip />
         </div>
         <p className="mt-6 text-sm font-extrabold text-felt">
           {place.unit.title} · {stepNumber} of {place.unit.steps.length}
@@ -750,6 +807,7 @@ function LessonRoom({
         <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
           {place.next ? "Continue" : "Finish"}
         </button>
+        {pop ? <p className="point-pop mt-3 font-display text-3xl font-semibold text-felt">{pop}</p> : null}
         {resetAsk ? (
           <ResetSheet
             onLesson={() => {
@@ -780,13 +838,16 @@ function LessonRoom({
           <Pause className="size-5" aria-hidden="true" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-lg leading-tight text-ink">{place.unit.title}</p>
+          <p className="flex items-center gap-2 truncate font-display text-lg leading-tight text-ink">
+            {mode === "acoustic" && listening ? <span className="listening-dot size-2 shrink-0 rounded-full bg-felt" /> : null}
+            <span className="truncate">{place.unit.title}</span>
+          </p>
           <p className="text-xs font-bold text-muted">
             Waits for you · {stepNumber} of {place.unit.steps.length}
             {step.kind === "phrase" ? ` · note ${index + 1} of ${step.notes.length}` : ""}
           </p>
         </div>
-        {mode === "acoustic" && listening ? <span className="listening-dot size-2 rounded-full bg-felt" /> : null}
+        <ScoreChip />
         <button
           type="button"
           onClick={() => setResetAsk(true)}
@@ -812,6 +873,7 @@ function LessonRoom({
             {reply}
           </p>
         ) : null}
+        {pop ? <p className="point-pop font-display text-3xl font-semibold text-felt">{pop}</p> : null}
         {done && earned > 0 ? <Stars n={earned} /> : null}
         <div className="flex flex-wrap justify-center gap-2">
           {!showHint && !done && step.kind !== "explore" ? (

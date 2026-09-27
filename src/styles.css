@@ -261,9 +261,29 @@
   }
 }
 
+.point-pop {
+  animation: point-pop 0.9s ease-out;
+}
+
+@keyframes point-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.6rem);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .listening-dot,
-  .key-target {
+  .key-target,
+  .point-pop {
     animation: none;
   }
 }

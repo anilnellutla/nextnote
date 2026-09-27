@@ -9,6 +9,9 @@ type Saved = {
   micReady: boolean;
   lastStepId: string | null;
   unlockAll: boolean;
+  points: number;
+  streak: number;
+  lastDay: string | null;
 };
 
 const KEY = "next-note-v1";
@@ -20,6 +23,9 @@ const empty: Saved = {
   micReady: false,
   lastStepId: null,
   unlockAll: false,
+  points: 0,
+  streak: 0,
+  lastDay: null,
 };
 
 function read(): Saved {
@@ -34,6 +40,9 @@ function read(): Saved {
       micReady: Boolean(parsed.micReady),
       lastStepId: typeof parsed.lastStepId === "string" ? parsed.lastStepId : null,
       unlockAll: Boolean(parsed.unlockAll),
+      points: typeof parsed.points === "number" && parsed.points > 0 ? Math.floor(parsed.points) : 0,
+      streak: typeof parsed.streak === "number" && parsed.streak > 0 ? Math.floor(parsed.streak) : 0,
+      lastDay: typeof parsed.lastDay === "string" ? parsed.lastDay : null,
     };
   } catch {
     return { ...empty };
@@ -47,6 +56,7 @@ type Store = Saved & {
   setUnlockAll: (unlockAll: boolean) => void;
   rememberStep: (id: string) => void;
   mark: (id: string, stars: number) => void;
+  addPoints: (amount: number) => string | null;
   clearSteps: (ids: string[]) => void;
   resetProgress: () => void;
   reset: () => void;
@@ -60,6 +70,9 @@ function snapshot(state: Store): Saved {
     micReady: state.micReady,
     lastStepId: state.lastStepId,
     unlockAll: state.unlockAll,
+    points: state.points,
+    streak: state.streak,
+    lastDay: state.lastDay,
   };
 }
 
@@ -89,6 +102,19 @@ export const useStudio = create<Store>((set, get) => ({
     set({ completed, stars: starsNext });
     localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
   },
+  addPoints: (amount) => {
+    const gained = Math.max(0, Math.floor(amount));
+    if (gained === 0) return null;
+    const before = rankAt(get().points);
+    const today = localDay();
+    let streak = get().streak;
+    if (get().lastDay !== today) streak = get().lastDay === previousDay() ? streak + 1 : 1;
+    const points = get().points + gained;
+    set({ points, streak, lastDay: today });
+    localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
+    const after = rankAt(points);
+    return after.name !== before.name ? after.name : null;
+  },
   clearSteps: (ids) => {
     const drop = new Set(ids);
     const stars = { ...get().stars };
@@ -106,6 +132,9 @@ export const useStudio = create<Store>((set, get) => ({
       completed: [],
       stars: {},
       lastStepId: null,
+      points: 0,
+      streak: 0,
+      lastDay: null,
     });
     localStorage.setItem(KEY, JSON.stringify(snapshot(get())));
   },
@@ -114,3 +143,38 @@ export const useStudio = create<Store>((set, get) => ({
     localStorage.setItem(KEY, JSON.stringify(empty));
   },
 }));
+
+export const RANKS = [
+  { points: 0, name: "First note" },
+  { points: 40, name: "Key finder" },
+  { points: 100, name: "Five fingers" },
+  { points: 180, name: "Song starter" },
+  { points: 300, name: "Melody maker" },
+  { points: 480, name: "Piano pal" },
+  { points: 700, name: "Concert kid" },
+] as const;
+
+export function rankAt(points: number): { name: string; next: string | null; left: number; progress: number } {
+  let index = 0;
+  for (let i = 0; i < RANKS.length; i++) {
+    if (points >= RANKS[i].points) index = i;
+  }
+  const current = RANKS[index];
+  const next = RANKS[index + 1] ?? null;
+  if (!next) return { name: current.name, next: null, left: 0, progress: 1 };
+  const span = next.points - current.points;
+  return {
+    name: current.name,
+    next: next.name,
+    left: next.points - points,
+    progress: Math.min(1, Math.max(0, (points - current.points) / span)),
+  };
+}
+
+function localDay(date = new Date()): string {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function previousDay(): string {
+  return localDay(new Date(Date.now() - 24 * 60 * 60 * 1000));
+}
