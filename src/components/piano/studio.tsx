@@ -372,7 +372,6 @@ function Path({
           className="mt-5 flex min-h-11 items-center justify-between gap-3 rounded-card bg-felt px-4 py-3 text-left text-ivory"
         >
           <span>
-            <span className="block text-xs font-bold text-ivory/80">Continue</span>
             <span className="font-display text-lg">{resume.unit.title}</span>
           </span>
           <ChevronRight className="size-5 shrink-0" aria-hidden="true" />
@@ -501,7 +500,6 @@ function LessonRoom({
   const [hearing, setHearing] = useState(false);
   const [paused, setPaused] = useState(false);
   const [resetAsk, setResetAsk] = useState(false);
-  const [hintOn, setHintOn] = useState(false);
   const [wrong, setWrong] = useState<number | null>(null);
   const discovered = useRef(new Set<number>());
 
@@ -538,20 +536,10 @@ function LessonRoom({
     mistakesRef.current = 0;
     advancing.current = false;
     setPaused(false);
-    setHintOn(false);
     setWrong(null);
     discovered.current = new Set();
     if (step) useStudio.getState().rememberStep(step.id);
   }, [stepId, step]);
-
-  useEffect(() => {
-    const current = stepRef.current;
-    if (!current || current.kind === "talk" || current.kind === "explore" || done) return;
-    setHintOn(false);
-    setWrong(null);
-    const timer = window.setTimeout(() => setHintOn(true), 900);
-    return () => window.clearTimeout(timer);
-  }, [stepId, index, done]);
 
   useEffect(() => {
     const offNote = onNote((midi) => {
@@ -616,6 +604,13 @@ function LessonRoom({
     else onExitRef.current();
   }
 
+  useEffect(() => {
+    const current = stepRef.current;
+    if (!current || current.kind !== "talk" || pausedRef.current) return;
+    const timer = window.setTimeout(() => goNext(), 1400);
+    return () => window.clearTimeout(timer);
+  }, [stepId]);
+
   function grade(midi: number) {
     if (pausedRef.current || holdRef.current || doneRef.current || advancing.current) return;
     const current = stepRef.current;
@@ -631,6 +626,13 @@ function LessonRoom({
       }
       setReply(`That's ${kidName(midi)}. ${howToFind(midi)}`);
       setTone("idle");
+      if (!advancing.current) {
+        advancing.current = true;
+        window.setTimeout(() => {
+          advancing.current = false;
+          goNext();
+        }, 700);
+      }
       return;
     }
 
@@ -656,7 +658,6 @@ function LessonRoom({
       } else {
         mistakesRef.current += 1;
         setWrong(midi);
-        setHintOn(true);
         const only = current.accept.length === 1 ? current.accept[0] : null;
         const finger = only != null ? current.fingers?.[only] : undefined;
         setReply(finger ? `${message} Finger ${finger}.` : message);
@@ -684,6 +685,11 @@ function LessonRoom({
         setReply(current.success);
         setTone("good");
         markRef.current(current.id, stars);
+        advancing.current = true;
+        window.setTimeout(() => {
+          advancing.current = false;
+          goNext();
+        }, 900);
       } else {
         const nextIndex = indexRef.current + 1;
         indexRef.current = nextIndex;
@@ -698,7 +704,6 @@ function LessonRoom({
     }
     mistakesRef.current += 1;
     setWrong(midi);
-    setHintOn(true);
     const finger = current.fingers?.[want];
     const word = current.lyrics?.[indexRef.current];
     const extra = [finger ? `Finger ${finger}.` : "", word ? `The word is "${word}".` : ""].filter(Boolean).join(" ");
@@ -774,7 +779,7 @@ function LessonRoom({
     staffNotes = [heard];
   }
   const lyric = step.kind === "phrase" ? step.lyrics?.[done ? step.lyrics.length - 1 : index] : null;
-  const showHint = hintOn && !done && step.kind !== "talk" && step.kind !== "explore";
+  const showHint = !done && (step.kind === "find" || step.kind === "phrase");
   const ribbonNotes = step.kind === "phrase" ? step.notes : step.kind === "find" ? [step.accept[0]] : [];
 
   if (step.kind === "talk") {
@@ -798,9 +803,6 @@ function LessonRoom({
         </p>
         <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{stepLabel(step)}</h1>
         {step.guide ? <BlackKeyGuide group={step.guide} /> : null}
-        <button type="button" onClick={goNext} className="mt-8 min-h-11 rounded-xl bg-felt px-5 py-3 font-extrabold text-ivory">
-          {place.next ? "Continue" : "Finish"}
-        </button>
         {resetAsk ? (
           <ResetSheet
             onLesson={() => {
@@ -864,18 +866,6 @@ function LessonRoom({
         )}
         {lyric ? <p className="font-display text-3xl font-semibold text-walnut">{lyric}</p> : null}
         {done && earned > 0 ? <Stars n={earned} /> : null}
-        <div className="flex flex-wrap justify-center gap-2">
-          {!showHint && !done && step.kind !== "explore" ? (
-            <button type="button" onClick={() => setHintOn(true)} className="min-h-11 rounded-xl bg-amber px-4 py-2 font-extrabold text-ink">
-              Show the yellow key
-            </button>
-          ) : null}
-          {done || step.kind === "explore" ? (
-            <button type="button" onClick={goNext} className="min-h-11 rounded-xl bg-felt px-4 py-2 font-extrabold text-ivory">
-              {place.next ? "Continue" : "Finish"}
-            </button>
-          ) : null}
-        </div>
       </section>
 
       <div className="min-w-0 px-3 pb-4">
@@ -924,7 +914,7 @@ function LessonRoom({
             <div className="mt-4 flex flex-col gap-2">
               <button type="button" onClick={() => setPaused(false)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-felt font-extrabold text-ivory">
                 <Play className="size-4" aria-hidden="true" />
-                Continue
+                Play
               </button>
               {demoOf(step).length > 0 ? (
                 <button
