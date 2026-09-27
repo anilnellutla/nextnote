@@ -19,6 +19,7 @@ import {
   focusOf,
   gradedSteps,
   highlightOf,
+  judgeNote,
   locate,
   phraseWindow,
   targetOf,
@@ -391,6 +392,7 @@ function Path({
                   {index + 1}
                 </span>
                 <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-wide text-felt">{unit.month ?? "Month 1"}</span>
                   <span className="block font-display text-lg leading-tight text-ink">{unit.title}</span>
                   <span className="mt-0.5 block text-sm text-muted">{unit.blurb}</span>
                   <span className="mt-1 block text-xs font-bold text-felt">
@@ -617,10 +619,12 @@ function LessonRoom({
   function grade(midi: number) {
     if (pausedRef.current || holdRef.current || doneRef.current || advancing.current) return;
     const current = stepRef.current;
-    if (!current || current.kind === "talk") return;
+    if (!current) return;
+    const judged = judgeNote(current, indexRef.current, midi);
+    if (judged.result === "ignore") return;
     setHeard(midi);
 
-    if (current.kind === "explore") {
+    if (judged.result === "explore") {
       setFlash(midi);
       window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
       if (!discovered.current.has(midi)) {
@@ -639,79 +643,56 @@ function LessonRoom({
       return;
     }
 
-    if (current.kind === "find") {
-      const message = coachAccept(midi, current.accept);
-      if (message == null) {
-        playYes();
-        ignoreUntil.current = performance.now() + 200;
-        setWrong(null);
-        setFlash(midi);
-        window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
-        const stars = starsFor(mistakesRef.current);
-        setEarned(stars);
-        setReply(current.success);
-        setTone("good");
-        markRef.current(current.id, stars);
-        award(10 + (mistakesRef.current === 0 ? 30 : mistakesRef.current <= 2 ? 15 : 5));
-        advancing.current = true;
-        window.setTimeout(() => {
-          advancing.current = false;
-          goNext();
-        }, 900);
-      } else {
-        mistakesRef.current += 1;
-        setWrong(midi);
+    if (judged.result === "wrong") {
+      mistakesRef.current += 1;
+      setWrong(midi);
+      setTone("fix");
+      if (current.kind === "find") {
+        const message = coachAccept(midi, current.accept) ?? "Try the yellow key.";
         const only = current.accept.length === 1 ? current.accept[0] : null;
         const finger = only != null ? current.fingers?.[only] : undefined;
         setReply(finger ? `${message} Finger ${finger}.` : message);
-        setTone("fix");
+        return;
       }
+      const want = current.kind === "phrase" ? current.notes[indexRef.current] : null;
+      const finger = want != null ? current.fingers?.[want] : undefined;
+      const word = current.kind === "phrase" ? current.lyrics?.[indexRef.current] : undefined;
+      const extra = [finger ? `Finger ${finger}.` : "", word ? `The word is "${word}".` : ""].filter(Boolean).join(" ");
+      setReply(want != null && extra ? `${coach(midi, want)} ${extra}` : want != null ? coach(midi, want) : "Try the yellow key.");
       return;
     }
 
-    const want = current.notes[indexRef.current];
-    if (want == null) return;
-    if (midi === want) {
-      playYes();
-      ignoreUntil.current = performance.now() + 420;
-      setWrong(null);
-      setFlash(midi);
-      window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
-      const atEnd = indexRef.current + 1 >= current.notes.length;
-      const clearBonus = atEnd ? (mistakesRef.current === 0 ? 30 : mistakesRef.current <= 2 ? 15 : 5) : 0;
-      award(10 + clearBonus);
-      if (atEnd) {
-        const stars = starsFor(mistakesRef.current);
-        setEarned(stars);
-        setDone(true);
-        doneRef.current = true;
-        setReply(current.success);
-        setTone("good");
-        markRef.current(current.id, stars);
-        advancing.current = true;
-        window.setTimeout(() => {
-          advancing.current = false;
-          goNext();
-        }, 900);
-      } else {
-        const nextIndex = indexRef.current + 1;
-        indexRef.current = nextIndex;
-        setIndex(nextIndex);
-        const nextNote = current.notes[nextIndex];
-        const word = current.lyrics?.[nextIndex];
-        if (nextNote === midi) setReply("Yes. Let the key up, then play that note again.");
-        else setReply(word ? `Yes. ${word}` : "Yes.");
-        setTone("good");
-      }
+    playYes();
+    ignoreUntil.current = performance.now() + (current.kind === "phrase" ? 420 : 200);
+    setWrong(null);
+    setFlash(midi);
+    window.setTimeout(() => setFlash((prev) => (prev === midi ? null : prev)), 280);
+    if (judged.finished) {
+      const stars = starsFor(mistakesRef.current);
+      setEarned(stars);
+      setDone(true);
+      doneRef.current = true;
+      setReply(current.success);
+      setTone("good");
+      markRef.current(current.id, stars);
+      const clearBonus = mistakesRef.current === 0 ? 30 : mistakesRef.current <= 2 ? 15 : 5;
+      award((current.kind === "phrase" ? 10 : 10) + clearBonus);
+      advancing.current = true;
+      window.setTimeout(() => {
+        advancing.current = false;
+        goNext();
+      }, 900);
       return;
     }
-    mistakesRef.current += 1;
-    setWrong(midi);
-    const finger = current.fingers?.[want];
-    const word = current.lyrics?.[indexRef.current];
-    const extra = [finger ? `Finger ${finger}.` : "", word ? `The word is "${word}".` : ""].filter(Boolean).join(" ");
-    setReply(extra ? `${coach(midi, want)} ${extra}` : coach(midi, want));
-    setTone("fix");
+    const clearBonus = 0;
+    award(10 + clearBonus);
+    indexRef.current = judged.index;
+    setIndex(judged.index);
+    const nextNote = current.kind === "phrase" ? current.notes[judged.index] : undefined;
+    const word = current.kind === "phrase" ? current.lyrics?.[judged.index] : undefined;
+    if (nextNote === midi) setReply("Yes. Let the key up, then play that note again.");
+    else setReply(word ? `Yes. ${word}` : "Yes.");
+    setTone("good");
   }
 
   async function hear() {

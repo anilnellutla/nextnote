@@ -1,6 +1,7 @@
-import { UNITS, type Step } from "./curriculum";
+import { UNITS, judgeNote, type Step } from "./curriculum";
 import { createHearer } from "./ear";
 import { analyze } from "./pitch";
+import { RANGE_END, RANGE_START } from "./theory";
 
 const FFT = 2048;
 const HOP_SECONDS = 0.02;
@@ -21,10 +22,12 @@ const PIANO: Partials = [1, 0.62, 0.36, 0.2, 0.12, 0.07];
 const WEAK: Partials = [0.08, 1, 0.7, 0.4, 0.22];
 
 const STYLES: Style[] = [
-  { name: "clear", amp: 0.22, noise: 0.001, cents: 0, note: 0.22, gap: 0.14, partials: PIANO },
-  { name: "room", amp: 0.1, noise: 0.008, cents: 16, note: 0.18, gap: 0.1, partials: PIANO },
-  { name: "soft", amp: 0.045, noise: 0.003, cents: -14, note: 0.2, gap: 0.11, partials: PIANO },
-  { name: "thin", amp: 0.14, noise: 0.006, cents: 8, note: 0.16, gap: 0.08, partials: WEAK },
+  { name: "our-piano", amp: 0.22, noise: 0.001, cents: 0, note: 0.22, gap: 0.14, partials: PIANO },
+  { name: "our-piano-room", amp: 0.1, noise: 0.008, cents: 16, note: 0.18, gap: 0.1, partials: PIANO },
+  { name: "our-piano-soft", amp: 0.045, noise: 0.003, cents: -14, note: 0.2, gap: 0.11, partials: PIANO },
+  { name: "our-piano-thin", amp: 0.14, noise: 0.006, cents: 8, note: 0.16, gap: 0.08, partials: WEAK },
+  { name: "on-screen", amp: 0.28, noise: 0.0015, cents: 0, note: 0.2, gap: 0.12, partials: [1, 0.22] },
+  { name: "on-screen-room", amp: 0.16, noise: 0.008, cents: 12, note: 0.18, gap: 0.1, partials: [1, 0.22] },
 ];
 
 function mulberry32(seed: number) {
@@ -39,8 +42,8 @@ function mulberry32(seed: number) {
 
 function lessonNotes(step: Step): number[] {
   if (step.kind === "phrase") return step.notes;
-  if (step.kind === "find") return step.accept.filter((midi) => midi >= 48 && midi <= 72);
-  if (step.kind === "explore") return [60, 64, 67, 61];
+  if (step.kind === "find") return step.accept.filter((midi) => midi >= RANGE_START && midi <= RANGE_END);
+  if (step.kind === "explore") return [60, 64, 67, 61, 66, 72, 76];
   return [];
 }
 
@@ -106,6 +109,44 @@ function listen(samples: Float32Array, sampleRate: number) {
   return heard;
 }
 
+function checkScreen(step: Step): string | null {
+  if (step.kind === "talk") return null;
+  if (step.kind === "phrase") {
+    if (step.lyrics && step.lyrics.length !== step.notes.length) {
+      return `lyrics ${step.lyrics.length} vs notes ${step.notes.length}`;
+    }
+    for (const midi of step.notes) {
+      if (midi < RANGE_START || midi > RANGE_END) return `note ${midi} is off the keyboard`;
+    }
+  }
+  if (step.kind === "explore") {
+    return judgeNote(step, 0, 64).result === "explore" ? null : "explore key did not count";
+  }
+  const notes =
+    step.kind === "phrase"
+      ? step.notes
+      : step.accept.filter((midi) => midi >= RANGE_START && midi <= RANGE_END).slice(0, 1);
+  const first = notes[0];
+  if (first == null) return "no note to play";
+  let wrong = -1;
+  for (let midi = RANGE_START; midi <= RANGE_END; midi++) {
+    if (judgeNote(step, 0, midi).result === "wrong") {
+      wrong = midi;
+      break;
+    }
+  }
+  if (wrong < 0) return "no wrong key exists for this step";
+  if (judgeNote(step, 0, wrong).result !== "wrong") return "a wrong on-screen key was accepted";
+  let index = 0;
+  for (const midi of notes) {
+    const judged = judgeNote(step, index, midi);
+    if (judged.result !== "advance") return `on-screen key ${midi} was rejected`;
+    index = judged.index;
+    if (judged.finished) return null;
+  }
+  return "on-screen lesson did not finish";
+}
+
 function same(heard: number[], notes: number[]) {
   return heard.length === notes.length && heard.every((midi, index) => midi === notes[index]);
 }
@@ -117,6 +158,9 @@ export async function runHearSuite(): Promise<{ ok: boolean; checked: number; fa
 
   for (const unit of UNITS) {
     for (const step of unit.steps) {
+      const screenProblem = checkScreen(step);
+      if (screenProblem) failures.push(`${unit.id}/${step.id} on-screen: ${screenProblem}`);
+      else if (step.kind !== "talk") checked += 1;
       const notes = lessonNotes(step);
       if (notes.length === 0) continue;
       for (const style of STYLES) {

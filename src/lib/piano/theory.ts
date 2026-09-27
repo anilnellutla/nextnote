@@ -1,7 +1,7 @@
 const LETTERS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
 export const RANGE_START = 48;
-export const RANGE_END = 72;
+export const RANGE_END = 79;
 
 export function pitchClass(midi: number): number {
   return ((midi % 12) + 12) % 12;

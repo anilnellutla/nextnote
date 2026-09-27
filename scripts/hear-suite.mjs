@@ -3,7 +3,7 @@ import { chromium } from "playwright";
 const url = process.env.HEAR_SUITE_URL || "http://127.0.0.1:8080/";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-page.setDefaultTimeout(180000);
+page.setDefaultTimeout(300000);
 try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   const result = await page.evaluate(async () => {

@@ -57,6 +57,13 @@ export function createHearer(emit: (midi: number) => void) {
   let peak = 0;
   let dipped = false;
   let miss = 0;
+  let last = 0;
+
+  const octaveOfLast = (midi: number) => {
+    if (!last) return false;
+    const leap = Math.abs(midi - last);
+    return leap === 12 || leap === 24;
+  };
 
   return {
     push(frame: PhaseFrame) {
@@ -93,19 +100,23 @@ export function createHearer(emit: (midi: number) => void) {
       }
       miss = 0;
       const strong = frame.confidence >= 0.8;
-
-      if (held == null) {
-        if (strong || (pending === midi && pendingHits >= 1)) {
-          emit(midi);
-          held = midi;
-          pending = null;
-          pendingHits = 0;
-          dipped = false;
-          peak = frame.rms;
-          return;
-        }
+      const octave = octaveOfLast(midi);
+      if (pending === midi) pendingHits += 1;
+      else {
         pending = midi;
         pendingHits = 1;
+      }
+      const ready = octave ? pendingHits >= 3 : strong || pendingHits >= 2;
+
+      if (held == null) {
+        if (!ready) return;
+        emit(midi);
+        last = midi;
+        held = midi;
+        pending = null;
+        pendingHits = 0;
+        dipped = false;
+        peak = frame.rms;
         return;
       }
 
@@ -114,19 +125,16 @@ export function createHearer(emit: (midi: number) => void) {
         pendingHits = 0;
         if (dipped && frame.rms > peak * 0.55) {
           emit(midi);
+          last = midi;
           dipped = false;
           peak = frame.rms;
         }
         return;
       }
 
-      if (pending === midi) pendingHits += 1;
-      else {
-        pending = midi;
-        pendingHits = 1;
-      }
-      if (pendingHits >= 3) {
+      if (pendingHits >= (octave ? 4 : 3)) {
         emit(midi);
+        last = midi;
         held = midi;
         pending = null;
         pendingHits = 0;
