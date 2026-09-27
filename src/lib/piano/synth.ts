@@ -1,11 +1,17 @@
 let ctx: AudioContext | null = null;
+let speaker: HTMLAudioElement | null = null;
+let speakerUrl = "";
 
 function context(): AudioContext {
   if (!ctx || ctx.state === "closed") {
     const AC =
       window.AudioContext ||
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    ctx = new AC({ latencyHint: "interactive" });
+    try {
+      ctx = new AC();
+    } catch {
+      ctx = new (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext();
+    }
   }
   return ctx;
 }
@@ -19,38 +25,37 @@ function midiToFreq(midi: number): number {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-function tone(midi: number, when: number, duration: number): void {
-  const audio = context();
+function tone(audio: AudioContext, midi: number, when: number, duration: number): void {
   const t = audio.currentTime + Math.max(0, when);
   const freq = midiToFreq(midi);
   const master = audio.createGain();
-  master.gain.setValueAtTime(0.35, t);
-  master.gain.linearRampToValueAtTime(0.001, t + duration);
+  master.gain.value = 0.32;
   master.connect(audio.destination);
 
   const fundamental = audio.createOscillator();
   fundamental.type = "triangle";
-  fundamental.frequency.setValueAtTime(freq, t);
+  fundamental.frequency.value = freq;
   fundamental.connect(master);
 
   const overtone = audio.createOscillator();
   overtone.type = "sine";
-  overtone.frequency.setValueAtTime(freq * 2, t);
+  overtone.frequency.value = freq * 2;
   const overtoneGain = audio.createGain();
-  overtoneGain.gain.setValueAtTime(0.14, t);
+  overtoneGain.gain.value = 0.12;
   overtone.connect(overtoneGain);
   overtoneGain.connect(master);
 
   fundamental.start(t);
   overtone.start(t);
-  fundamental.stop(t + duration + 0.02);
-  overtone.stop(t + duration + 0.02);
+  fundamental.stop(t + duration);
+  overtone.stop(t + duration);
 }
 
+/** Safari will not keep playing a blob once its URL is revoked, so the element stays. */
 function beep(midi: number): void {
   const freq = midiToFreq(midi);
   const sr = 22050;
-  const n = Math.floor(sr * 0.45);
+  const n = Math.floor(sr * 0.5);
   const buffer = new ArrayBuffer(44 + n * 2);
   const view = new DataView(buffer);
   const text = (offset: number, value: string) => {
@@ -70,44 +75,52 @@ function beep(midi: number): void {
   text(36, "data");
   view.setUint32(40, n * 2, true);
   for (let i = 0; i < n; i++) {
-    const env = Math.min(1, i / 180) * (1 - i / n);
-    const sample = Math.sin((2 * Math.PI * freq * i) / sr) * env * 0.9;
+    const env = Math.min(1, i / 200) * (1 - i / n);
+    const sample = Math.sin((2 * Math.PI * freq * i) / sr) * env * 0.95;
     view.setInt16(44 + i * 2, sample * 32767, true);
   }
-  const url = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
-  const player = new Audio(url);
-  player.volume = 1;
-  void player.play().finally(() => URL.revokeObjectURL(url));
+  if (!speaker) {
+    speaker = document.createElement("audio");
+    speaker.setAttribute("playsinline", "true");
+    speaker.style.display = "none";
+    document.body.appendChild(speaker);
+  }
+  if (speakerUrl) URL.revokeObjectURL(speakerUrl);
+  speakerUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+  speaker.src = speakerUrl;
+  speaker.volume = 1;
+  const pending = speaker.play();
+  if (pending) void pending.catch(() => undefined);
 }
 
-/** Must be called from the tap itself, not from a timer. */
+/** Call from the click itself. Safari ignores a note started while sound is still locked. */
 export function playNote(midi: number, when = 0, duration = 0.7): void {
-  const audio = context();
-  if (audio.state !== "running") void audio.resume();
+  let audio: AudioContext;
   try {
-    tone(midi, when, duration);
+    audio = context();
   } catch {
     beep(midi);
     return;
   }
-  if (audio.state !== "running") beep(midi);
+  const start = () => {
+    try {
+      tone(audio, midi, when, duration);
+    } catch {
+      beep(midi);
+    }
+  };
+  if (audio.state === "running") {
+    start();
+    return;
+  }
+  // Safari leaves the context suspended until resume() finishes, and drops
+  // any oscillator started before that. The wav plays in this click instead.
+  void audio.resume();
+  beep(midi);
 }
 
 export function playYes(): void {
-  const audio = context();
-  if (audio.state !== "running") void audio.resume();
-  const t = audio.currentTime;
-  const osc = audio.createOscillator();
-  const gain = audio.createGain();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(880, t);
-  osc.frequency.linearRampToValueAtTime(1318, t + 0.12);
-  gain.gain.setValueAtTime(0.12, t);
-  gain.gain.linearRampToValueAtTime(0.001, t + 0.14);
-  osc.connect(gain);
-  gain.connect(audio.destination);
-  osc.start(t);
-  osc.stop(t + 0.16);
+  playNote(84, 0, 0.12);
 }
 
 export async function playSequence(
